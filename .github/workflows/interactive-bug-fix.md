@@ -14,10 +14,12 @@ safe-outputs:
     title-prefix: "[ai-fix] "
     labels: [automation, bugfix]
 
-env:
-  COPILOT_PROVIDER_BASE_URL: "https://ollama.akinus21.com"
-  COPILOT_PROVIDER_API_KEY: "ollama"
-  COPILOT_PROVIDER_MODEL: "akai-net"
+engine:
+  id: copilot
+  env:
+    COPILOT_PROVIDER_BASE_URL: "https://ollama.akinus21.com"
+    COPILOT_PROVIDER_API_KEY: "ollama"
+    COPILOT_MODEL: "akai-net"
 ---
 
 You are an autonomous Rust Software Engineer. When a user types a comment containing "/fix":
