@@ -62,7 +62,7 @@ jobs:
           
           echo "Sending snippet payload to verified chat endpoint with redirect forwarding..."
           # FIXED: Added -L, --post301, --post302, --post303 flags to pass payload through ollama-queue 307 redirects safely
-          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1" \
+          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
