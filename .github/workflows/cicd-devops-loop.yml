@@ -29,18 +29,18 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Ask akai-net to Sollama.elf-Heal and Submit PR
+      - name: Ask akai-net to Self-Heal and Submit PR
         env:
-          OLLAMA_URL: "https://akinus21.com"
+          OLLAMA_URL: "https://ollama.akinus21.com"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "GitHub CI is gathering context from src/main.rs..."
-          BROKEN_CODE=$(cat src/main.rs)
           
+          # FIXED: --rawfile safely slaps file data into a string variable without syntax escaping quirks
           jq -n \
             --arg model "akai-net" \
             --arg sys "You are an expert Rust engineer. The user's code has an unclosed delimiter syntax error. Fix the file. Return ONLY the raw valid code, without markdown formatting or code blocks." \
-            --arg user "$BROKEN_CODE" \
+            --rawfile user src/main.rs \
             '{model: $model, stream: false, messages: [{role: "system", content: $sys}, {role: "user", content: $user}]}' > payload.json
 
           echo "Calling your distributed llama.cpp architecture..."
@@ -50,11 +50,11 @@ jobs:
             -H "User-Agent: GitHubActions-CI" \
             -d @payload.json)
 
-          # Extract raw string safely from JSON
-          FIXED_CODE=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // .choices.message.content')
+          # Extract raw string response
+          FIXED_CODE=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
 
           if [ -z "$FIXED_CODE" ] || [ "$FIXED_CODE" = "null" ]; then
-            echo "Error: Empty response from model"
+            echo "Error: Empty response or bad payload received from model backend."
             exit 1
           fi
 
@@ -64,7 +64,6 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Adding $RANDOM guarantees a unique name that won't trigger conflict rejections
           BRANCH_NAME="ai-patch-${{ github.run_id }}-$RANDOM"
           git checkout -b "$BRANCH_NAME"
           git add src/main.rs
