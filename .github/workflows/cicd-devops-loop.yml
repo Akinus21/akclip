@@ -30,7 +30,7 @@ jobs:
 
       - name: Run Self-Healing Loop via Custom Backend
         run: |
-          echo "Build failed. Waking up akai-net model on ://akinus21.com to resolve compilation error..."
+          echo "Build failed. Waking up akai-net model on ://ollama.akinus21.com to resolve compilation error..."
           
           # This routes the error context directly to your distributed cluster 
           curl -s -X POST "https://://ollama.akinus21.com/v1/chat/completions" \
