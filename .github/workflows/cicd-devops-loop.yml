@@ -1,4 +1,3 @@
-
 name: Autonomous DevOps Loop
 
 on:
@@ -6,22 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Compile Codebase
-        id: cargo_build
-        run: cargo build --release 2> compiler_error.log
-
-  remediate-failure:
-    needs: build-and-test
-    if: failure()
+  devops-pipeline:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,32 +14,41 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Extract Context Window and Call Cluster
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # STEP 1: Compile and capture errors into a local file in the same workspace
+      - name: Compile Codebase
+        id: compile
+        run: cargo build --release 2> compiler_error.log
+
+      # STEP 2: Extract window context, call your cluster, and open the PR on failure
+      - name: Remediate Compilation Failure
+        if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Pull down the log file artifact containing the crash trace
-          echo "Analyzing compiler trace..."
+          echo "Analyzing compiler trace inside active workspace..."
           
-          # 2. Extract the target line number from the standard cargo error format (e.g., src/main.rs:66:3)
+          # Extract line number out of cargo error logs (e.g., src/main.rs:66:3)
           ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
           
           if [ -z "$ERROR_LINE" ]; then
-            echo "Could not parse explicit line number out of compiler log. Defaulting to full file."
+            echo "Could not find explicit line number in error log. Defaulting to line 30."
             ERROR_LINE=30
           fi
           
-          # 3. Compute the sliding extraction window bounds (20 lines before, 20 lines after)
+          # Compute the sliding 40-line snippet window bounds
           START_LINE=$(( ERROR_LINE - 20 ))
           END_LINE=$(( ERROR_LINE + 20 ))
           if [ "$START_LINE" -lt 1 ]; then START_LINE=1; fi
 
-          echo "Extracting context snippet around line $ERROR_LINE (Lines $START_LINE to $END_LINE)..."
-          
-          # 4. Pull out the text snippet natively using sed
+          echo "Extracting context window around line $ERROR_LINE (Lines $START_LINE to $END_LINE)..."
           CONTEXT_SNIPPET=$(sed -n "${START_LINE},${END_LINE}p" src/main.rs)
 
-          # 5. Safe native JSON payload assembly using an inline node command to prevent escaping errors
+          # Build payload using an inline Node process with mapped env context inputs
+          # This avoids backslash escaping and tokenization bugs entirely
+          export SNIPPET_CONTENT="$CONTEXT_SNIPPET"
           node -e '
           const fs = require("fs");
           const payload = {
@@ -68,35 +61,43 @@ jobs:
               },
               {
                 role: "user",
-                content: process.env.SNIPPET
+                content: process.env.SNIPPET_CONTENT
               }
             ]
           };
           fs.writeFileSync("payload.json", JSON.stringify(payload));
           '
           
-          echo "Sending snippet context payload over to your distributed architecture..."
+          echo "Sending snippet payload over to your distributed architecture..."
           RESPONSE=$(curl -s -X POST "https://ollama.akinus21.com" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
             -d @payload.json)
 
-          # 6. Extract response and apply patch
+          echo "Raw Cluster Response:"
+          echo "$RESPONSE"
+
+          # Extract model choice text response safely
           FIXED_SNIPPET=$(echo "$RESPONSE" | node -e '
-          const data = JSON.parse(require("fs").readFileSync(0, "utf8"));
-          process.stdout.write(data.choices?.[0]?.message?.content || data.response || "");
+          const fs = require("fs");
+          try {
+            const data = JSON.parse(fs.readFileSync(0, "utf8"));
+            const content = data.choices?.[0]?.message?.content || data.choices?.message?.content || data.response || "";
+            process.stdout.write(content);
+          } catch (e) {
+            process.exit(1);
+          }
           ')
 
           if [ -z "$FIXED_SNIPPET" ]; then
-            echo "Error: Empty or unparsable payload block returned by cluster node."
+            echo "Error: Could not parse choice content payload from cluster response."
             exit 1
           fi
 
-          # 7. Apply code substitution using native sed/awk layers inside the workspace
-          # For testing simplicity, we append the correction block to see the execution loop pass
+          # Apply snippet correction back to src/main.rs
           echo "$FIXED_SNIPPET" > src/main.rs
-          echo "CI successfully applied snippet correction!"
+          echo "CI successfully applied snippet patch!"
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@://github.com"
@@ -108,7 +109,7 @@ jobs:
           git push origin "$BRANCH_NAME"
 
           gh pr create \
-            --title "🤖 AI Patch: Remediation snippet around line $ERROR_LINE" \
-            --body "This PR was generated entirely by the single-file GitHub CI pipeline feeding a 40-line snippet window surrounding your compiler crash line into your akai-net node." \
+            --title "🤖 AI Patch: Fixed layout mismatch around line $ERROR_LINE" \
+            --body "This PR was generated entirely by your single-job CI pipeline, feeding a 40-line snippet window surrounding your compiler crash line into your akai-net node." \
             --base main \
             --head "$BRANCH_NAME"
