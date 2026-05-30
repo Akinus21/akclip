@@ -6,4 +6,4 @@
           OPENAI_API_KEY: "ollama" # Ollama usually accepts any string or none if unauthenticated
         with:
           agent-definition: '.github/agents/devops-sre.md'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GH_TOKEN }}
