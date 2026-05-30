@@ -19,11 +19,11 @@ safe-outputs:
     allowed-repos: ["Akinus21/homebrew-tap"]
 
 engine:
-  id: copilot
+  id: crush
+  model: "openai/akai-net"
   env:
-    COPILOT_PROVIDER_BASE_URL: "https://ollama.akinus21.com"
-    COPILOT_PROVIDER_API_KEY: "ollama"
-    COPILOT_MODEL: "akai-net"
+    OPENAI_BASE_URL: "https://ollama.akinus21.com"
+    OPENAI_API_KEY: "ollama"
 ---
 
 You are an autonomous Rust SRE and Release Engineer. Monitor the incoming compilation state:
