@@ -36,7 +36,7 @@ jobs:
         run: |
           echo "GitHub CI is gathering context from src/main.rs..."
           
-          # Clean, unescaped jq syntax that prevents shell character clipping
+          # FIXED: Clean, standard jq notation without backslash characters
           jq -n \
             --arg model "akai-net" \
             --arg sys "You are an expert Rust engineer. The user's code has an unclosed delimiter syntax error. Fix the file. Return ONLY the raw valid code, without markdown formatting or code blocks." \
@@ -50,11 +50,10 @@ jobs:
             -H "User-Agent: GitHubActions-CI" \
             -d @payload.json)
 
-          # Output raw response payload straight to console logs to assist with fallback debugging
           echo "Raw Backend Response:"
           echo "\$RESPONSE"
 
-          # Strict multi-schema fallback extractor to capture non-standard JSON formats cleanly
+          # Fallback response parsing block
           FIXED_CODE=\((echo "\)RESPONSE" | jq -r '
             if .choices[0].message.content != null then .choices[0].message.content
             elif .choices.message.content != null then .choices.message.content
@@ -67,7 +66,6 @@ jobs:
             exit 1
           fi
 
-          # Strip away any leftover markdown code wrappers the model returned
           echo "\$FIXED_CODE" | sed -e 's/^```rust//' -e 's/^```//' -e 's/```$//' > src/main.rs
           echo "CI successfully applied the model's patch to src/main.rs!"
 
