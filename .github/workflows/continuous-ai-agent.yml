@@ -1,3 +1,29 @@
+name: Agentic DevOps Loop
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+  workflow_run:
+    workflows: ["Build and Test"] # Listens to your primary build pipeline
+    types: [completed]
+
+jobs:
+  agent-loop:
+    # Run only on failed builds or when explicitly commanded via issue comments
+    if: >
+      (github.event.workflow_run.conclusion == 'failure') || 
+      (github.event.issue && contains(github.event.comment.body, '/fix'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
       - name: Run Autonomous Agent
         uses: github/gh-aw@main 
         env:
