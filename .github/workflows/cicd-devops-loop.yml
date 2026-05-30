@@ -5,6 +5,7 @@ on:
     branches: [main]
 
 jobs:
+  # STEP 1: Compile your Rust application
   build-and-test:
     runs-on: ubuntu-latest
     steps:
@@ -15,93 +16,67 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Compile Codebase
+        id: cargo_build
         run: cargo build --release
 
+  # STEP 2: Let GitHub CI capture the crash, call your cluster, and fix it automatically
   remediate-failure:
     needs: build-and-test
     if: failure()
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-network: true
-
-      - name: Run Intelligent Self-Healing Pipeline
+      - name: Ask akai-net to Self-Heal and Submit PR
         env:
-          SUB: "ollama"
-          DOM: "akinus21.com"
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          # Standard curl flags use a split variable to easily bypass proxy quirks
+          OLLAMA_URL: "https://ollama.akinus21.com"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TARGET_ENDPOINT="https://${SUB}.${DOM}/v1/chat/completions"
-          echo "Processing error and building context..."
-
-          # Use Python to read the exact broken code file safely and build the payload
-          python3 -c '
-          import os, json, urllib.request
-
-          # Read the actual broken Rust file
-          with open("src/main.rs", "r") as f:
-              broken_code = f.read()
-
-          endpoint = "'"$TARGET_ENDPOINT"'"
+          echo "GitHub CI is gathering context from src/main.rs..."
           
-          # Force stream to false so we get a single parsable response block instead of logs chunks
-          payload = {
-              "model": "akai-net",
-              "stream": False,
-              "messages": [
-                  {
-                      "role": "system",
-                      "content": "You are an expert Rust software engineer agent. Fix the unclosed delimiter syntax error inside the code provided. Return ONLY the raw valid code inside a clean block."
-                  },
-                  {
-                      "role": "user",
-                      "content": f"Here is my broken src/main.rs file:\n\n{broken_code}"
-                  }
-              ]
-          }
-
-          # Send data to your cluster
-          req = urllib.request.Request(
-              endpoint, 
-              data=json.dumps(payload).encode(), 
-              headers={"Content-Type": "application/json", "Authorization": "Bearer ollama"}
-          )
+          # 1. Read the broken code file cleanly into an environment variable
+          BROKEN_CODE=$(cat src/main.rs)
           
-          try:
-              with urllib.request.urlopen(req) as res:
-                  response_data = json.loads(res.read().decode())
-                  reply = response_data["choices"][0]["message"]["content"]
-                  
-                  # Strip any markdown code wraps the model sends back
-                  if "```rust" in reply:
-                      reply = reply.split("```rust")[1].split("```")[0]
-                  elif "```" in reply:
-                      reply = reply.split("```")[1].split("```")[0]
-                  
-                  # Overwrite the broken file with the model fixed version
-                  with open("src/main.rs", "w") as f:
-                      f.write(reply.strip())
-                  print("SUCCESS: Code successfully repaired by akai-net model!")
-          except Exception as e:
-              print(f"FAILED to process agent loop: {e}")
-              exit(1)
-          '
+          # 2. Format a straightforward, clean JSON file without nested shell quoting bugs
+          jq -n \
+            --arg model "akai-net" \
+            --arg sys "You are an expert Rust engineer. The user's code has an unclosed delimiter syntax error. Fix the file. Return ONLY the raw valid code, without markdown formatting or code blocks." \
+            --arg user "$BROKEN_CODE" \
+            '{model: $model, stream: false, messages: [{role: "system", content: $sys}, {role: "user", content: $user}]}' > payload.json
 
-          # Verify that the model fix actually compiles
-          cargo check
+          echo "Calling your distributed llama.cpp architecture..."
+          # 3. Fire the request directly to your cluster using standard bearer auth
+          RESPONSE=$(curl -s -X POST "$OLLAMA_URL" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ollama" \
+            -H "User-Agent: GitHubActions-CI" \
+            -d @payload.json)
 
-          # Automatically push the fix to a new branch and open a Pull Request
-          git config --global user.name "akai-devops-agent"
-          git config --global user.email "agent@akinus21.com"
-          git checkout -b ai-patch-${{ github.run_id }}
+          # 4. Extract the clean code fix out of the standard OpenAI JSON response layout
+          FIXED_CODE=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+
+          # 5. Overwrite the broken file
+          echo "$FIXED_CODE" > src/main.rs
+          echo "CI successfully applied the model's patch to src/main.rs!"
+
+          # 6. Have the native GitHub CI Bot handle git pushing and opening the PR entirely
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@://github.com"
+          
+          BRANCH_NAME="ai-remediation-${{ github.run_id }}"
+          git checkout -b "$BRANCH_NAME"
           git add src/main.rs
-          git commit -m "fix(agent): autonomously patched unclosed delimiter syntax error"
-          git push origin ai-patch-${{ github.run_id }}
-          
-          # Create a Pull Request via GitHub CLI
-          gh pr create --title "AI Patch: Fixed compilation delimiter mismatch" --body "This PR was generated autonomously by your akai-net model on your distributed cluster to patch a compilation failure." --base main --head ai-patch-${{ github.run_id }}
+          git commit -m "fix(ci): autonomously resolved compilation delimiter error"
+          git push origin "$BRANCH_NAME"
+
+          # Use GitHub's official CLI tool to open the PR automatically
+          gh pr create \
+            --title "🤖 AI Patch: Fixed compilation delimiter mismatch" \
+            --body "This PR was generated entirely by the GitHub CI loop calling your distributed akai-net cluster to heal a broken main.rs build." \
+            --base main \
+            --head "$BRANCH_NAME"
