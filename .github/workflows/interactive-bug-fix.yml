@@ -1,0 +1,33 @@
+name: Interactive Bug Fixer
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  fix-issue:
+    # Only run if someone comments with /fix
+    if: contains(github.event.comment.body, '/fix')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Interaction Loop via Custom Backend
+        run: |
+          echo "Connecting to distributed llama.cpp architecture..."
+          # The execution script reads your issue context and feeds it to your model
+          curl -s -X POST "https://ollama.akinus21.com" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ollama" \
+            -d '{
+              "model": "akai-net",
+              "messages": [
+                {"role": "system", "content": "You are an autonomous Rust engineer. Apply fixes based on the prompt, modify files locally, and verify compilation using cargo check."},
+                {"role": "user", "content": "'"${{ github.event.comment.body }}"'"}
+              ]
+            }'
