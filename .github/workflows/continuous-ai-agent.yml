@@ -1,0 +1,9 @@
+      - name: Run Autonomous Agent
+        uses: github/gh-aw@main 
+        env:
+          # Points the underlying LLM client to your personal Ollama instance
+          OPENAI_API_BASE: "https://ollama.akinus21.com"
+          OPENAI_API_KEY: "ollama" # Ollama usually accepts any string or none if unauthenticated
+        with:
+          agent-definition: '.github/agents/devops-sre.md'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
