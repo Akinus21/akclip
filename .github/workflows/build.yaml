@@ -1,0 +1,73 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # 1. Your existing build workflow
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Build and Test
+        run: |
+          echo "Running build scripts..."
+          # Insert your actual build/compilation commands here
+
+  # 2. Automated Release and Version Tagging
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.tagger.outputs.new_tag }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump Version and Create Tag
+        id: tagger
+        uses: anothrNick/github-tag-action@1.64.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          WITH_V: true
+          DEFAULT_BUMP: patch # Increments patch (0.0.x) unless #major or #minor is in the commit message
+
+      - name: Create GitHub Release
+        if: steps.tagger.outputs.new_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tagger.outputs.new_tag }}
+          name: Release ${{ steps.tagger.outputs.new_tag }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  # 3. Dynamic Homebrew Formula Deployment
+  homebrew:
+    needs: release
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update or Create Homebrew Formula
+        uses: dawidd6/action-homebrew-bump-formula@v3
+        with:
+          # Your target tap repository
+          token: ${{ secrets.GH_TOKEN }}
+          tap: Akinus21/homebrew-tap
+          
+          # The name of your formula (matches your repository name)
+          formula: ${{ github.event.repository.name }}
+          
+          # Force creates the formula file inside the tap if it doesn't exist yet
+          force: true 
+          
+          # Tells Homebrew to pull the new version archive straight from the release
+          tag: ${{ needs.release.outputs.version }}
+          revision: ${{ github.sha }}
