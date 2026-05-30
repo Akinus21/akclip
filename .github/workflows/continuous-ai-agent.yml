@@ -25,10 +25,11 @@ jobs:
         uses: actions/checkout@v4
       
       - name: Run Autonomous Agent
-        uses: github/gh-aw@main 
+        # FIXED: Points to the pre-compiled runtime package to stop Docker compilation failures
+        uses: github/gh-aw-actions/execute@v1 
         env:
           # Points the underlying LLM client to your personal Ollama instance
-          OPENAI_API_BASE: "https://ollama.akinus21.com"
+          OPENAI_API_BASE: "https://akinus21.com"
           OPENAI_API_KEY: "ollama" # Ollama usually accepts any string or none if unauthenticated
         with:
           agent-definition: '.github/agents/devops-sre.md'
