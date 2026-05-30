@@ -66,7 +66,7 @@ jobs:
           
           echo "Sending snippet payload to verified chat endpoint..."
           # TARGET PATH: Restored to verified chat/completions router path
-          RESPONSE=$(curl -s -X POST "https://ollama.akinus21.com" \
+          RESPONSE=$(curl -s -X POST "https://ollama.akinus21.com/v1" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
