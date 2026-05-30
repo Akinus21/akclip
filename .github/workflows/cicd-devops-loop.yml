@@ -41,7 +41,7 @@ jobs:
           }
           JSON
 
-          curl -s -X POST "https://://ollama.akinus21.com/v1/chat/completions" \
+          curl -s -X POST "https://https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -d @payload.json
