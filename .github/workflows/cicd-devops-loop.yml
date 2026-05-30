@@ -36,7 +36,7 @@ jobs:
         run: |
           echo "GitHub CI is gathering context from src/main.rs..."
           
-          # FIXED: Clean, standard jq notation without backslash characters
+          # Clean, unescaped jq syntax that prevents shell character clipping
           jq -n \
             --arg model "akai-net" \
             --arg sys "You are an expert Rust engineer. The user's code has an unclosed delimiter syntax error. Fix the file. Return ONLY the raw valid code, without markdown formatting or code blocks." \
@@ -53,7 +53,7 @@ jobs:
           echo "Raw Backend Response:"
           echo "\$RESPONSE"
 
-          # Fallback response parsing block
+          # Strict multi-schema fallback extractor to capture non-standard JSON formats cleanly
           FIXED_CODE=\((echo "\)RESPONSE" | jq -r '
             if .choices[0].message.content != null then .choices[0].message.content
             elif .choices.message.content != null then .choices.message.content
@@ -66,11 +66,12 @@ jobs:
             exit 1
           fi
 
+          # Strip away any leftover markdown code wrappers the model returned
           echo "\$FIXED_CODE" | sed -e 's/^```rust//' -e 's/^```//' -e 's/```$//' > src/main.rs
           echo "CI successfully applied the model's patch to src/main.rs!"
 
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           BRANCH_NAME="ai-patch-${{ github.run_id }}-$RANDOM"
           git checkout -b "$BRANCH_NAME"
