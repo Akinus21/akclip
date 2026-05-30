@@ -28,14 +28,11 @@ jobs:
         run: |
           echo "Analyzing compiler trace inside active workspace..."
           
-          # Isolate the exact line number from the log file
           ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
-          
           if [ -z "$ERROR_LINE" ]; then
             ERROR_LINE=66
           fi
           
-          # Slice the 40-line sliding window context natively via sed
           START_LINE=$(( ERROR_LINE - 20 ))
           END_LINE=$(( ERROR_LINE + 20 ))
           if [ "$START_LINE" -lt 1 ]; then START_LINE=1; fi
@@ -43,7 +40,6 @@ jobs:
           echo "Extracting context window around line $ERROR_LINE (Lines $START_LINE to $END_LINE)..."
           CONTEXT_SNIPPET=$(sed -n "${START_LINE},${END_LINE}p" src/main.rs)
 
-          # Packages the raw context snippet into a safe JSON payload object
           export SNIPPET_CONTENT="$CONTEXT_SNIPPET"
           node -e '
           const fs = require("fs");
@@ -64,9 +60,9 @@ jobs:
           fs.writeFileSync("payload.json", JSON.stringify(payload));
           '
           
-          echo "Sending snippet payload to verified chat endpoint..."
-          # TARGET PATH: Restored to verified chat/completions router path
-          RESPONSE=$(curl -s -X POST "https://ollama.akinus21.com/v1" \
+          echo "Sending snippet payload to verified chat endpoint with redirect forwarding..."
+          # FIXED: Added -L, --post301, --post302, --post303 flags to pass payload through ollama-queue 307 redirects safely
+          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
@@ -75,12 +71,11 @@ jobs:
           echo "Raw Cluster Response:"
           echo "$RESPONSE"
 
-          # Extends standard array mapping selectors matching OpenAI/Ollama layouts
           FIXED_SNIPPET=$(echo "$RESPONSE" | node -e '
           const fs = require("fs");
           try {
             const data = JSON.parse(fs.readFileSync(0, "utf8"));
-            const content = data.choices[0].message.content || "";
+            const content = data.choices[0].message.content || data.choices.message.content || data.response || "";
             process.stdout.write(content);
           } catch (e) {
             process.exit(1);
@@ -92,7 +87,6 @@ jobs:
             exit 1
           fi
 
-          # Apply code fix back to workspace target file
           echo "$FIXED_SNIPPET" > src/main.rs
           echo "CI successfully applied snippet patch!"
 
