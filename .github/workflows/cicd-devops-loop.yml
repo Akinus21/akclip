@@ -25,30 +25,83 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Run Self-Healing Loop via Custom Backend
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-network: true
+
+      - name: Run Intelligent Self-Healing Pipeline
         env:
-          # Splitting the domain string prevents GitHub's secret-masking parser from scrambling the URL
           SUB: "ollama"
           DOM: "akinus21.com"
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # Combine the tokens inside the shell environment to get a clean address
           TARGET_ENDPOINT="https://${SUB}.${DOM}/v1/chat/completions"
-          echo "Waking up akai-net model..."
-          
-          cat << 'JSON' > payload.json
-          {
-            "model": "akai-net",
-            "messages": [
-              {
-                "role": "system", 
-                "content": "You are an autonomous SRE. The Rust compilation failed with an unclosed delimiter on src/main.rs. Modify the file, correct the syntax formatting, verify it passes locally via cargo check, and open a PR."
-              }
-            ]
-          }
-          JSON
+          echo "Processing error and building context..."
 
-          # Call your backend using the concatenated variable
-          curl -s -X POST "$TARGET_ENDPOINT" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ollama" \
-            -d @payload.json
+          # Use Python to read the exact broken code file safely and build the payload
+          python3 -c '
+          import os, json, urllib.request
+
+          # Read the actual broken Rust file
+          with open("src/main.rs", "r") as f:
+              broken_code = f.read()
+
+          endpoint = "'"$TARGET_ENDPOINT"'"
+          
+          # Force stream to false so we get a single parsable response block instead of logs chunks
+          payload = {
+              "model": "akai-net",
+              "stream": False,
+              "messages": [
+                  {
+                      "role": "system",
+                      "content": "You are an expert Rust software engineer agent. Fix the unclosed delimiter syntax error inside the code provided. Return ONLY the raw valid code inside a clean block."
+                  },
+                  {
+                      "role": "user",
+                      "content": f"Here is my broken src/main.rs file:\n\n{broken_code}"
+                  }
+              ]
+          }
+
+          # Send data to your cluster
+          req = urllib.request.Request(
+              endpoint, 
+              data=json.dumps(payload).encode(), 
+              headers={"Content-Type": "application/json", "Authorization": "Bearer ollama"}
+          )
+          
+          try:
+              with urllib.request.urlopen(req) as res:
+                  response_data = json.loads(res.read().decode())
+                  reply = response_data["choices"][0]["message"]["content"]
+                  
+                  # Strip any markdown code wraps the model sends back
+                  if "```rust" in reply:
+                      reply = reply.split("```rust")[1].split("```")[0]
+                  elif "```" in reply:
+                      reply = reply.split("```")[1].split("```")[0]
+                  
+                  # Overwrite the broken file with the model fixed version
+                  with open("src/main.rs", "w") as f:
+                      f.write(reply.strip())
+                  print("SUCCESS: Code successfully repaired by akai-net model!")
+          except Exception as e:
+              print(f"FAILED to process agent loop: {e}")
+              exit(1)
+          '
+
+          # Verify that the model fix actually compiles
+          cargo check
+
+          # Automatically push the fix to a new branch and open a Pull Request
+          git config --global user.name "akai-devops-agent"
+          git config --global user.email "agent@akinus21.com"
+          git checkout -b ai-patch-${{ github.run_id }}
+          git add src/main.rs
+          git commit -m "fix(agent): autonomously patched unclosed delimiter syntax error"
+          git push origin ai-patch-${{ github.run_id }}
+          
+          # Create a Pull Request via GitHub CLI
+          gh pr create --title "AI Patch: Fixed compilation delimiter mismatch" --body "This PR was generated autonomously by your akai-net model on your distributed cluster to patch a compilation failure." --base main --head ai-patch-${{ github.run_id }}
