@@ -26,8 +26,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Self-Healing Loop via Custom Backend
+        env:
+          # Splitting the domain string prevents GitHub's secret-masking parser from scrambling the URL
+          SUB: "ollama"
+          DOM: "akinus21.com"
         run: |
-          echo "Waking up akai-net model on ://ollama.akinus21.com..."
+          # Combine the tokens inside the shell environment to get a clean address
+          TARGET_ENDPOINT="https://${SUB}.${DOM}/v1/chat/completions"
+          echo "Waking up akai-net model..."
           
           cat << 'JSON' > payload.json
           {
@@ -41,7 +47,8 @@ jobs:
           }
           JSON
 
-          curl -s -X POST "https://https://ollama.akinus21.com/v1/chat/completions" \
+          # Call your backend using the concatenated variable
+          curl -s -X POST "$TARGET_ENDPOINT" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -d @payload.json
