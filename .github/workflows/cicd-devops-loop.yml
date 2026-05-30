@@ -32,37 +32,46 @@ jobs:
       - name: Ask akai-net to Self-Heal and Submit PR
         env:
           OLLAMA_URL: "https://ollama.akinus21.com"
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "GitHub CI is gathering context from src/main.rs..."
           
-          # FIXED: --rawfile safely slaps file data into a string variable without syntax escaping quirks
           jq -n \
             --arg model "akai-net" \
             --arg sys "You are an expert Rust engineer. The user's code has an unclosed delimiter syntax error. Fix the file. Return ONLY the raw valid code, without markdown formatting or code blocks." \
             --rawfile user src/main.rs \
-            '{model: $model, stream: false, messages: [{role: "system", content: $sys}, {role: "user", content: $user}]}' > payload.json
+            '{model: \$model, stream: false, messages: [{role: "system", content: \(sys}, {role: "user", content: \)user}]}' > payload.json
 
           echo "Calling your distributed llama.cpp architecture..."
-          RESPONSE=$(curl -s -X POST "$OLLAMA_URL" \
+          RESPONSE=\((curl -s -X POST "\)OLLAMA_URL" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
             -d @payload.json)
 
-          # Extract raw string response
-          FIXED_CODE=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+          # Debug: Output the raw response to the logs so we can see what the cluster returned
+          echo "Raw Backend Response:"
+          echo "\$RESPONSE"
 
-          if [ -z "$FIXED_CODE" ] || [ "$FIXED_CODE" = "null" ]; then
-            echo "Error: Empty response or bad payload received from model backend."
+          # FIXED: Fallback parsing string matching OpenAI Array, Flat Engine response, or Ollama legacy
+          FIXED_CODE=\((echo "\)RESPONSE" | jq -r '
+            if .choices[0].message.content != null then .choices[0].message.content
+            elif .choices.message.content != null then .choices.message.content
+            elif .response != null then .response
+            else empty end
+          ')
+
+          if [ -z "\(FIXED_CODE" ] \vert{}\vert{} [ "\)FIXED_CODE" = "null" ]; then
+            echo "Error: Could not parse response. See the Raw Backend Response above to debug layout."
             exit 1
           fi
 
-          echo "$FIXED_CODE" > src/main.rs
+          # Clean up any leftover markdown code fences the model might have returned
+          echo "\$FIXED_CODE" | sed -e 's/^```rust//' -e 's/^```//' -e 's/```$//' > src/main.rs
           echo "CI successfully applied the model's patch to src/main.rs!"
 
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.email "github-actions[bot]@://github.com"
           
           BRANCH_NAME="ai-patch-${{ github.run_id }}-$RANDOM"
           git checkout -b "$BRANCH_NAME"
