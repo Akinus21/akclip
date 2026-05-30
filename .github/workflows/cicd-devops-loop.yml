@@ -35,12 +35,28 @@ jobs:
         run: |
           echo "GitHub CI is gathering context from src/main.rs..."
           
-          # FIXED: Clean, standard jq property map with absolute variable declarations
-          jq -n \
-            --arg model "akai-net" \
-            --arg sys "You are an expert Rust engineer. The user's code has an unclosed delimiter syntax error. Fix the file. Return ONLY the raw valid code, without markdown formatting or code blocks." \
-            --rawfile user src/main.rs \
-            '{model: \$model, stream: false, messages: [{role: "system", content: \(sys}, {role: "user", content: \)user}]}' > payload.json
+          # Native Node script builds a perfect, unescaped JSON file automatically
+          node -e '
+          const fs = require("fs");
+          const brokenCode = fs.readFileSync("src/main.rs", "utf8");
+          
+          const payload = {
+            model: "akai-net",
+            stream: false,
+            messages: [
+              {
+                role: "system",
+                content: "You are an expert Rust engineer. The user\x27s code has an unclosed delimiter syntax error. Fix the file. Return ONLY the raw valid code, without markdown formatting or code blocks."
+              },
+              {
+                role: "user",
+                content: brokenCode
+              }
+            ]
+          };
+          
+          fs.writeFileSync("payload.json", JSON.stringify(payload));
+          '
 
           echo "Calling your distributed llama.cpp architecture..."
           RESPONSE=\$(curl -s -X POST "https://ollama.akinus21.com" \
@@ -52,19 +68,25 @@ jobs:
           echo "Raw Backend Response:"
           echo "\$RESPONSE"
 
-          # Fallback response parsing block
-          FIXED_CODE=\((echo "\)RESPONSE" | jq -r '
-            if .choices[0].message.content != null then .choices[0].message.content
-            elif .choices.message.content != null then .choices.message.content
-            elif .response != null then .response
-            else empty end
+          # Extract raw response text using inline Node to bypass jq bugs entirely
+          FIXED_CODE=\((echo "\)RESPONSE" | node -e '
+          const fs = require("fs");
+          const raw = fs.readFileSync(0, "utf8");
+          try {
+            const data = JSON.parse(raw);
+            const content = data.choices?.[0]?.message?.content || data.choices?.message?.content || data.response || "";
+            process.stdout.write(content);
+          } catch(e) {
+            process.exit(1);
+          }
           ')
 
-          if [ -z "\(FIXED_CODE" ] \vert{}\vert{} [ "\)FIXED_CODE" = "null" ]; then
-            echo "Error: Could not parse response. See the Raw Backend Response above to debug layout."
+          if [ -z "\$FIXED_CODE" ]; then
+            echo "Error: Could not parse response text from backend cluster."
             exit 1
           fi
 
+          # Strip away any leftover markdown code wrappers the model returned
           echo "\$FIXED_CODE" | sed -e 's/^```rust//' -e 's/^```//' -e 's/```$//' > src/main.rs
           echo "CI successfully applied the model's patch to src/main.rs!"
 
