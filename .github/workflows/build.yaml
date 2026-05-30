@@ -5,17 +5,21 @@ on:
     branches: [main]
 
 jobs:
-  # 1. Your existing build workflow
+  # 1. Compile and test the Rust codebase
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Run Build and Test
-        run: |
-          echo "Running build scripts..."
-          # Insert your actual build/compilation commands here
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Tests
+        run: cargo test
+
+      - name: Build Release Binary
+        run: cargo build --release
 
   # 2. Automated Release and Version Tagging
   release:
@@ -37,7 +41,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           WITH_V: true
-          DEFAULT_BUMP: patch # Increments patch (0.0.x) unless #major or #minor is in the commit message
+          DEFAULT_BUMP: patch
 
       - name: Create GitHub Release
         if: steps.tagger.outputs.new_tag != ''
@@ -58,16 +62,9 @@ jobs:
       - name: Update or Create Homebrew Formula
         uses: dawidd6/action-homebrew-bump-formula@v3
         with:
-          # Your target tap repository
           token: ${{ secrets.GH_TOKEN }}
           tap: Akinus21/homebrew-tap
-          
-          # The name of your formula (matches your repository name)
           formula: ${{ github.event.repository.name }}
-          
-          # Force creates the formula file inside the tap if it doesn't exist yet
           force: true 
-          
-          # Tells Homebrew to pull the new version archive straight from the release
           tag: ${{ needs.release.outputs.version }}
           revision: ${{ github.sha }}
