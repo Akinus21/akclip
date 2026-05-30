@@ -18,9 +18,6 @@ jobs:
       - name: Run Tests
         run: cargo test
 
-      - name: Build Release Binary
-        run: cargo build --release
-
   # 2. Automated Release and Version Tagging
   release:
     needs: build
@@ -53,18 +50,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-  # 3. Dynamic Homebrew Formula Deployment
-  homebrew:
+  # 3. Hand over tap management to the Agent
+  deploy-tap:
     needs: release
     if: needs.release.outputs.version != ''
     runs-on: ubuntu-latest
     steps:
-      - name: Update or Create Homebrew Formula
-        uses: dawidd6/action-homebrew-bump-formula@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Invoke Agent Tap Manager
+        uses: github/gh-aw@main
+        env:
+          OPENAI_API_BASE: "https://akinus21.com"
+          OPENAI_API_KEY: "ollama"
+          GH_TOKEN: ${{ secrets.GH_TOKEN }} # Provided to allow agent to git push to homebrew-tap
         with:
-          token: ${{ secrets.GH_TOKEN }}
-          tap: Akinus21/homebrew-tap
-          formula: ${{ github.event.repository.name }}
-          force: true 
-          tag: ${{ needs.release.outputs.version }}
-          revision: ${{ github.sha }}
+          agent-definition: '.github/agents/devops-sre.md'
+          # Pass context variables so the agent knows exactly what version tag just dropped
+          instructions: "The software build succeeded. Run your formula check and update/create the formula for version ${{ needs.release.outputs.version }} inside the Akinus21/homebrew-tap repository."
