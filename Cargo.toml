@@ -1,0 +1,21 @@
+[package]
+name = "akclip"
+version = "0.1.1"
+authors = ["Akinus21 <your.email@example.com>"]
+edition = "2021"
+
+[dependencies]
+# Light, zero-dependency logging framework standard for Rust CLIs
+log = "0.4"
+env_logger = "0.11"
+
+# Cross-platform clipboard provider library (highly recommended for a clip tool)
+arboard = "3.4"
+
+[profile.release]
+# Optimizes the compiled binary size and speed for production homebrew tap delivery
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
