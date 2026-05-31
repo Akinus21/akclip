@@ -15,6 +15,7 @@ jobs:
         with:
           token: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
           persist-credentials: true
+          fetch-depth: 0 # Forces pulling full branch history to let git pull run safely
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -34,7 +35,15 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@://github.com"
           
-          # FIXED: Create the directory first to prevent No such file or directory crashes
+          # Safely ensure git tracking metadata is active in workspace before execution
+          if [ ! -d ".git" ]; then
+            echo "Initializing missing fallback repository configuration..."
+            git init
+            git remote add origin "https://x-access-token:\({{ secrets.ITERATIVE_LOOP_TOKEN }}@://github.com\){{ github.repository }}.git"
+            git fetch origin main
+            git checkout main
+          fi
+
           mkdir -p .git/info
           echo "compiler_error.log" >> .git/info/exclude
           echo "payload.json" >> .git/info/exclude
