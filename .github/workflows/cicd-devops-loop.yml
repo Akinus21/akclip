@@ -75,9 +75,14 @@ jobs:
           const fs = require("fs");
           try {
             const data = JSON.parse(fs.readFileSync(0, "utf8"));
-            const content = data.choices[0].message.content || data.choices.message.content || data.response || "";
+            // Handles native Ollama message content, raw response text, or OpenAI format variants
+            const content = (data.message && data.message.content) || 
+                            data.response || 
+                            (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || 
+                            "";
             process.stdout.write(content);
           } catch (e) {
+            console.error("JSON parsing step failed:", e.message);
             process.exit(1);
           }
           ')
