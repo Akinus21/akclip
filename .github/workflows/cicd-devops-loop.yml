@@ -84,22 +84,43 @@ jobs:
           FIXED_SNIPPET=$(echo "$RESPONSE" | node -e '
           const fs = require("fs");
           try {
-            const data = JSON.parse(fs.readFileSync(0, "utf8"));
-            
-            // Safely grab standard OpenAI/llama.cpp tokens from choice slots
-            const content = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
-            
-            if (!content) {
-              console.error("Empty content received or token mismatch.");
+            const rawInput = fs.readFileSync(0, "utf8");
+            let combinedContent = "";
+
+            // Check if backend returned a stream or single object
+            if (rawInput.trim().startsWith("data:")) {
+              const lines = rawInput.split("\n");
+              for (let line of lines) {
+                line = line.trim();
+                if (!line || line === "data: [DONE]") continue;
+                if (line.startsWith("data:")) {
+                  try {
+                    const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
+                    const delta = parsedChunk.choices?.[0]?.delta?.content || "";
+                    combinedContent += delta;
+                  } catch (err) {
+                    // Ignore malformed partial boundary frames
+                  }
+                }
+              }
+            } else {
+              // Fallback to non-streaming object parsing
+              const data = JSON.parse(rawInput);
+              combinedContent = data.choices?.[0]?.message?.content || "";
+            }
+
+            if (!combinedContent) {
+              console.error("Empty content stream received or structural parsing mismatch.");
               process.exit(1);
             }
-            
-            process.stdout.write(content);
+
+            process.stdout.write(combinedContent);
           } catch (e) {
             console.error("Failed parsing valid engine tokens:", e.message);
             process.exit(1);
           }
           ')
+
 
           if [ -z "$FIXED_SNIPPET" ]; then
             echo "Error: Could not parse response choice tokens from cluster layout."
