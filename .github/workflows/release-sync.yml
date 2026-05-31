@@ -1,0 +1,111 @@
+name: Release Sync
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  sync-release:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Release Binary
+        run: |
+          cargo build --release
+          mkdir -p release
+          chmod +x target/release/akclip
+          tar czf release/akclip.tar.gz -C target/release akclip
+
+      - name: Generate SHA256
+        id: sha
+        run: |
+          SHA256=$(sha256sum release/akclip.tar.gz | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Get Latest Tag
+        id: tag
+        run: |
+          git fetch --tags
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          VERSION=${LATEST_TAG#v}
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          patch=$((patch + 1))
+          NEW_TAG="v${major}.${minor}.${patch}"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "previous_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create Git Tag
+        run: |
+          git tag ${{ steps.tag.outputs.tag }}
+          git push origin ${{ steps.tag.outputs.tag }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: release/akclip.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Create Homebrew Formula
+        run: |
+          mkdir -p homebrew-formula
+          cat > homebrew-formula/akclip.rb << 'RUBY'
+          class Akclip < Formula
+            desc "Clipboard utility for capturing stdin"
+            homepage "https://github.com/Akinus21/akclip"
+            url "https://github.com/Akinus21/akclip/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz"
+            sha256 "${{ steps.sha.outputs.sha256 }}"
+            license "MIT"
+            version "${{ steps.tag.outputs.tag }}"
+
+            def install
+              system "tar", "xzf", "akclip.tar.gz"
+              bin.install "akclip/target/release/akclip"
+            end
+
+            test do
+              system "#{bin}/akclip", "--help"
+            end
+          end
+          RUBY
+
+      - name: Update Homebrew Tap
+        uses: actions/checkout@v4
+        with:
+          repository: Akinus21/homebrew-tap
+          path: homebrew-tap
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure Git and Push Homebrew Formula
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          cd homebrew-tap
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/Akinus21/homebrew-tap.git"
+          mkdir -p Formula
+          cp ../homebrew-formula/akclip.rb Formula/akclip.rb
+          git add Formula/akclip.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | sed 's/.*: //')
+          git commit -m "chore(homebrew): update akclip to ${{ steps.tag.outputs.tag }}" || echo "No changes to commit"
+          git push origin $DEFAULT_BRANCH

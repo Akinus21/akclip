@@ -1,0 +1,144 @@
+name: Issue Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  cleanup-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cleanup Merged PR
+        if: github.event.pull_request.merged == true
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_NUMBER: ${{ github.event.pull_request.body }}
+        run: |
+          echo "PR was merged. Performing cleanup..."
+
+          # Extract issue number from PR body
+          ISSUE_NUM=$(echo "$PR_BODY" | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
+
+          if [ -z "$ISSUE_NUM" ]; then
+            echo "No issue number found in PR body. Skipping issue cleanup."
+          else
+            echo "Found issue #$ISSUE_NUM in PR body"
+
+            # Get the branch for this issue
+            BRANCH_NAME="issue-${ISSUE_NUM}"
+
+            # Get commit history for this PR
+            COMMITS=$(git log origin/main..origin/$BRANCH_NAME --oneline 2>/dev/null || echo "No commits to summarize")
+
+            # AI summarize the commits
+            cat > summarize.js << 'ENDSCRIPT'
+            const fs = require("fs");
+            const commits = fs.readFileSync("commits.txt", "utf8");
+
+            const payload = {
+              model: "akai-net",
+              stream: false,
+              messages: [
+                {
+                  role: "system",
+                  content: "You are an expert developer Relations assistant. Summarize the following commit history in a concise, friendly message that explains what fixes were made. Keep it under 3 sentences. Do not use markdown."
+                },
+                {
+                  role: "user",
+                  content: "Here is the commit history:\n" + commits
+                }
+              ]
+            };
+            fs.writeFileSync("summary_payload.json", JSON.stringify(payload));
+            ENDSCRIPT
+
+            echo "$COMMITS" > commits.txt
+            node summarize.js
+
+            SUMMARY=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ollama" \
+              -H "User-Agent: GitHubActions-CI" \
+              -d @summary_payload.json | node -e "
+              const fs = require('fs');
+              const data = JSON.parse(fs.readFileSync(0, 'utf8'));
+              console.log(data.choices[0].message.content);
+            " 2>/dev/null || echo "Fix has been merged. Thank you!")
+
+            echo "Summary: $SUMMARY"
+
+            # Comment on the issue
+            gh issue comment $ISSUE_NUM --body "## Fix Merged! ✓
+
+PR #$PR_NUMBER has been merged.
+
+**Summary of changes:**
+$SUMMARY
+
+Thank you for reporting this issue!"
+
+            # Close the issue
+            gh issue close $ISSUE_NUM --comment "Issue resolved via PR #$PR_NUMBER"
+
+            echo "Issue #$ISSUE_NUM closed and commented."
+          fi
+
+          # Delete the issue branch
+          BRANCH_NAME=$(echo "$PR_BODY" | grep -oE 'issue-[0-9]+' | head -1 || echo "")
+          if [ -n "$BRANCH_NAME" ]; then
+            echo "Deleting branch: $BRANCH_NAME"
+            git push origin --delete $BRANCH_NAME 2>/dev/null || echo "Branch already deleted or not found"
+          fi
+
+      - name: Cleanup Closed (Not Merged) PR
+        if: github.event.pull_request.merged == false
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "PR was closed without merge. Performing cleanup..."
+
+          # Extract issue number from PR body
+          ISSUE_NUM=$(echo "$PR_BODY" | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
+
+          if [ -z "$ISSUE_NUM" ]; then
+            echo "No issue number found in PR body."
+          else
+            echo "Found issue #$ISSUE_NUM in PR body"
+
+            # Comment on the issue
+            gh issue comment $ISSUE_NUM --body "## PR Closed Without Merge
+
+PR #$PR_NUMBER was closed without being merged.
+
+The work on this issue is paused. If you wish to continue, please open a new /fix request and the agent will resume work.
+
+Thank you for your patience."
+
+            # Close the issue (marked as closed, not resolved)
+            gh issue close $ISSUE_NUM --comment "Work paused - PR closed without merge."
+          fi
+
+          # Delete the issue branch
+          BRANCH_NAME=$(echo "$PR_BODY" | grep -oE 'issue-[0-9]+' | head -1 || echo "")
+          if [ -n "$BRANCH_NAME" ]; then
+            echo "Deleting branch: $BRANCH_NAME"
+            git push origin --delete $BRANCH_NAME 2>/dev/null || echo "Branch already deleted or not found"
+          fi

@@ -1,14 +1,18 @@
-name: Autonomous DevOps Loop
+name: DevOps Loop
 
 on:
   push:
-    branches: [main]
+    branches: [devops]
+  pull_request_review_comment:
+    types: [created, edited]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  build-and-release:
+  devops-loop:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -30,91 +34,26 @@ jobs:
           name: akclip-binary
           path: target/release/akclip
 
-      - name: Package Release Artifacts
-        if: success()
-        run: |
-          chmod +x target/release/akclip
-          mkdir -p release
-          tar czf release/akclip.tar.gz -C target/release akclip
-
-      - name: Generate SHA256
-        id: sha
-        if: success()
-        run: |
-          SHA256=$(sha256sum release/akclip.tar.gz | cut -d' ' -f1)
-          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
-
-      - name: Get Latest Tag
-        id: tag
-        if: success()
-        run: |
-          git fetch --tags
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          VERSION=${LATEST_TAG#v}
-          IFS='.' read -r major minor patch <<< "$VERSION"
-          patch=$((patch + 1))
-          NEW_TAG="v${major}.${minor}.${patch}"
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          echo "previous_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          files: release/akclip.tar.gz
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Create Homebrew Formula
-        if: success()
-        run: |
-          mkdir -p homebrew-formula
-          cat > homebrew-formula/akclip.rb << 'RUBY'
-          class Akclip < Formula
-            desc "Clipboard utility for capturing stdin"
-            homepage "https://github.com/Akinus21/akclip"
-            url "https://github.com/Akinus21/akclip/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz"
-            sha256 "${{ steps.sha.outputs.sha256 }}"
-            license "MIT"
-            version "${{ steps.tag.outputs.tag }}"
-
-            def install
-              system "tar", "xzf", "akclip.tar.gz"
-              bin.install "akclip/target/release/akclip"
-            end
-
-            test do
-              system "#{bin}/akclip", "--help"
-            end
-          end
-          RUBY
-
-      - name: Update Homebrew Tap
-        if: success()
-        uses: actions/checkout@v4
-        with:
-          repository: Akinus21/homebrew-tap
-          path: homebrew-tap
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 0
-
-      - name: Configure Git and Push Homebrew Formula
+      - name: Create PR on Success
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          cd homebrew-tap
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/Akinus21/homebrew-tap.git"
-          mkdir -p Formula
-          cp ../homebrew-formula/akclip.rb Formula/akclip.rb
-          git add Formula/akclip.rb
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | sed 's/.*: //')
-          git commit -m "chore(homebrew): update akclip to ${{ steps.tag.outputs.tag }}" || echo "No changes to commit"
-          git push origin $DEFAULT_BRANCH
+          echo "Build succeeded! Creating PR to main..."
+          BRANCH_NAME=$(git branch --show-current)
+
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --head $BRANCH_NAME --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME"
+          else
+            gh pr create \
+              --base main \
+              --head $BRANCH_NAME \
+              --title "DevOps: update from ${BRANCH_NAME}" \
+              --body "DevOps loop completed successfully. Build verified. Ready to merge."
+          fi
 
       - name: Remediate Any Failure
         if: failure()
@@ -127,14 +66,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          if [ ! -d ".git" ]; then
-            echo "Initializing missing fallback repository configuration..."
-            git init
-            git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO_SLUG}.git"
-            git remote set-url --push origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO_SLUG}.git"
-            git fetch origin main
-            git checkout main
-          fi
+          BRANCH_NAME=$(git branch --show-current)
+          echo "Working on branch: $BRANCH_NAME"
 
           mkdir -p .git/info
           echo "compiler_error.log" >> .git/info/exclude
@@ -142,22 +75,30 @@ jobs:
           echo "response.txt" >> .git/info/exclude
 
           git reset --hard HEAD
-          git pull origin main --rebase
+          git pull origin $BRANCH_NAME --rebase || true
 
-          LOOP_COUNT=$(git log -n 10 --format="%s" | grep -c "autonomously patched" || true)
+          LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
           echo "Current autonomous remediation loop depth: $LOOP_COUNT"
-          if [ "$LOOP_COUNT" -ge 3 ]; then
-            echo "CRITICAL: Maximum iteration depth reached (3 attempts). AI failed to solve error."
-            echo "Breaking recursive loop execution to prevent resource exhaustion."
+          if [ "$LOOP_COUNT" -ge 10 ]; then
+            echo "CRITICAL: Maximum iteration depth reached (10 attempts). AI failed to solve error."
+            echo "Creating issue to report persistent failure..."
+            gh issue create \
+              --title "DevOps Failed: Unable to fix build after 10 iterations" \
+              --body "The DevOps agent attempted 10 iterations to fix the build on branch '${BRANCH_NAME}' but was unsuccessful. Manual intervention required.
+
+Last commit with issue:
+$(git log -1 --pretty=format:'%H - %s')
+
+Please review and provide guidance."
             exit 1
           fi
 
-          COMPILER_LOGS=$(cat compiler_error.log 2>/dev/null || echo "Workflow/Build failed")
+          COMPILER_LOGS=$(cat compiler_error.log 2>/dev/null || echo "Build/Workflow failed")
           WORKFLOW_FILE=$(cat .github/workflows/cicd-devops-loop.yml 2>/dev/null || echo "")
 
           export RAW_COMPILER_LOGS="$COMPILER_LOGS"
 
-          node -e '
+          cat > fix.js << 'ENDSCRIPT'
           const fs = require("fs");
           const logs = process.env.RAW_COMPILER_LOGS;
           const mainRs = fs.readFileSync("src/main.rs", "utf8");
@@ -172,16 +113,18 @@ jobs:
             messages: [
               {
                 role: "system",
-                content: "You are an expert Rust engineer and DevOps engineer. The build/release workflow failed. Analyze the error logs and fix the appropriate file(s). Return the raw file content for any file you modify. If it is a Rust error, fix src/main.rs. If it is a workflow/shell/git error, fix .github/workflows/cicd-devops-loop.yml. Return the raw file content WITHOUT markdown blocks or formatting wrappers."
+                content: "You are an expert Rust engineer and DevOps engineer. The build/release workflow failed. Analyze the error logs and fix the appropriate file(s). Return the raw file content for any file you modify WITHOUT markdown blocks or formatting wrappers. If it is a Rust error, fix src/main.rs. If it is a workflow/shell/git error, fix .github/workflows/cicd-devops-loop.yml."
               },
               {
                 role: "user",
-                content: `[ERROR LOGS]:\n${logs}\n\n[src/main.rs]:\n${mainRs}\n\n[WORKFLOW FILE (.github/workflows/cicd-devops-loop.yml)]:\n${workflowContent}`
+                content: "[ERROR LOGS]:\n" + logs + "\n\n[src/main.rs]:\n" + mainRs + "\n\n[WORKFLOW FILE (.github/workflows/cicd-devops-loop.yml)]:\n" + workflowContent
               }
             ]
           };
           fs.writeFileSync("payload.json", JSON.stringify(payload));
-          '
+          ENDSCRIPT
+
+          node fix.js
 
           echo "Sending payload to AI endpoint for remediation..."
           CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
@@ -192,7 +135,7 @@ jobs:
 
           echo "$CurlResponse" > response.txt
 
-          node -e '
+          cat > parse.js << 'ENDPARSE'
           const fs = require("fs");
           try {
             const rawInput = fs.readFileSync("response.txt", "utf8").trim();
@@ -227,25 +170,23 @@ jobs:
               cleaned = cleaned.replace(/```$/, "");
             }
 
-            // Try to detect which file needs fixing based on content patterns
             if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
-              // Looks like a workflow file
               fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
-              console.log("Workflow file modifications applied!");
+              console.log("Workflow file updated!");
             } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
-              // Looks like Rust code
               fs.writeFileSync("src/main.rs", cleaned);
-              console.log("Rust file modifications applied!");
+              console.log("Rust source file updated!");
             } else {
-              // Default to main.rs
               fs.writeFileSync("src/main.rs", cleaned);
-              console.log("Defaulting to Rust file modifications applied!");
+              console.log("Defaulting to Rust source!");
             }
           } catch (e) {
             console.error("Failed processing response:", e.message);
             process.exit(1);
           }
-          '
+          ENDPARSE
+
+          node parse.js
 
           echo "CI successfully applied patch!"
 
@@ -257,5 +198,19 @@ jobs:
             echo "Changes detected! Staging and committing..."
             git add -A
             git commit -m "fix(ci): autonomously patched failure"
-            git push origin main
+            git push origin $BRANCH_NAME
           fi
+
+      - name: Respond to PR Comment
+        if: github.event_name == 'pull_request_review_comment'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          PR_NUM=${{ github.event.pull_request.number }}
+          BRANCH_NAME=$(git branch --show-current)
+
+          echo "Responding to PR comment on #$PR_NUM..."
+
+          # Post response as PR comment
+          gh pr comment $PR_NUM --body "Agent acknowledged your request on DevOps branch '${BRANCH_NAME}'. Work is being processed."
