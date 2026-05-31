@@ -1,4 +1,11 @@
-use std::env;
+The build/release workflow failed because the `src/main.rs` file contains a syntax error. The error is caused by the `use std::env;` statement, which is missing the `::` before `env`.
+
+To fix this, we need to update the `use std::env;` line to `use std::env;::`.
+
+Here is the updated `src/main.rs` file:
+
+```rust
+use std::env::{self};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -20,3 +27,6 @@ fn main() {
     println!("   --version: Show version");
     println!("   --help: Show help");
 }
+```
+
+Now, the build/release workflow should be successful after the changes.
