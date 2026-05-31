@@ -305,11 +305,12 @@ jobs:
         run: |
           PR_URL=$(gh pr list --head $BRANCH_NAME --state open --json url --jq '.[0].url' 2>/dev/null || echo "")
           if [ -n "$PR_URL" ]; then
-            gh issue comment $ISSUE_NUM --body "## Fix In Progress
-
-Agent has created a PR to address this issue: $PR_URL
-
-The build has passed and the fix is ready for review. Merge the PR to devops to trigger integration to main."
+            COMMENT_BODY=$(printf '%s\n%s\n%s\n%s\n' \
+              "## Fix In Progress" \
+              "Agent has created a PR to address this issue: $PR_URL" \
+              "The build has passed and the fix is ready for review." \
+              "Merge the PR to devops to trigger integration to main.")
+            gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
           fi
 
   respond-to-comment:
