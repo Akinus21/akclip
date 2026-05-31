@@ -124,7 +124,7 @@ jobs:
             version "VERSION_PLACEHOLDER"
 
             def install
-              system "tar", "xzf", "akclip.tar.gz"
+              tar xzf "akclip.tar.gz"
               bin.install "akclip/target/release/akclip"
             end
 
