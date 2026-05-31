@@ -13,7 +13,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          # Swapping GITHUB_TOKEN for your custom PAT to allow recursive loop triggers
           token: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
           persist-credentials: true
 
@@ -34,9 +33,13 @@ jobs:
           # Configure Git Credentials and sync upstream branches safely before changes
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@://github.com"
+          
+          # FIXED: Create the directory first to prevent No such file or directory crashes
+          mkdir -p .git/info
           echo "compiler_error.log" >> .git/info/exclude
           echo "payload.json" >> .git/info/exclude
           echo "response.txt" >> .git/info/exclude
+          
           git pull origin main --rebase
 
           # SAFETY GATE: Extract loop occurrences from git log to prevent infinite loops
