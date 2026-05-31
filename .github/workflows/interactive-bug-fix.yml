@@ -18,16 +18,26 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run Interaction Loop via Custom Backend
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           echo "Connecting to distributed llama.cpp architecture..."
-          # The execution script reads your issue context and feeds it to your model
+          
+          # Safely construct the JSON payload via Node to avoid shell escaping drops
+          node -e '
+          const fs = require("fs");
+          const payload = {
+            model: "akai-net",
+            stream: false,
+            messages: [
+              { role: "system", content: "You are an autonomous Rust engineer. Apply fixes based on the prompt, modify files locally, and verify compilation using cargo check." },
+              { role: "user", content: process.env.COMMENT_BODY }
+            ]
+          };
+          fs.writeFileSync("interactive_payload.json", JSON.stringify(payload));
+          '
+
           curl -s -X POST "https://ollama.akinus21.com" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
-            -d '{
-              "model": "akai-net",
-              "messages": [
-                {"role": "system", "content": "You are an autonomous Rust engineer. Apply fixes based on the prompt, modify files locally, and verify compilation using cargo check."},
-                {"role": "user", "content": "'"${{ github.event.comment.body }}"'"}
-              ]
-            }'
+            -d @interactive_payload.json
