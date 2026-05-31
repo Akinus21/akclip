@@ -288,5 +288,6 @@ jobs:
           git add Formula/akclip.rb
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | sed 's/.*: //')
           git commit -m "chore(homebrew): update akclip to ${{ steps.tag.outputs.tag }}" || echo "No changes to commit"
-          git push origin main
+          git push origin $DEFAULT_BRANCH
