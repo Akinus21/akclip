@@ -63,27 +63,25 @@ jobs:
 
           const userMessage = `[ISSUE DESCRIPTION]:\n${issueBody}\n\n[COMMENT FROM USER]:\n${commentBody}\n\n[CURRENT src/main.rs]:\n${mainRs}\n\n[CURRENT WORKFLOW (.github/workflows/cicd-devops-loop.yml)]:\n${workflowContent}`;
 
+          const systemPrompt = "You are an expert Rust engineer and DevOps engineer. " +
+            "DIAGNOSE the issue first, then only fix the appropriate file. " +
+            "If the issue is about: compilation error, runtime bug, panic, wrong output → fix src/main.rs. " +
+            "If the issue is about: CI/CD, Homebrew, GitHub Actions, releases, checksum, workflow → fix .github/workflows/cicd-devops-loop.yml. " +
+            "IMPORTANT RULES: " +
+            "1. Only return code for the file that NEEDS fixing, not both. " +
+            "2. If fixing Rust code: return raw Rust code starting with use std::env; or fn main. " +
+            "3. If fixing workflow: return raw YAML starting with name: and containing jobs:. " +
+            "4. Do NOT add markdown code blocks. " +
+            "5. Make sure Rust code compiles before returning. " +
+            "Analyze the user's issue and respond with ONLY the raw file content that fixes it.";
+
           const payload = {
             model: "akai-net",
             stream: false,
             messages: [
               {
                 role: "system",
-                content: `You are an expert Rust engineer and DevOps engineer.
-
-DIAGNOSE the issue first, then only fix the appropriate file:
-
-- If the issue is about: compilation error, runtime bug, panic, wrong output → fix src/main.rs
-- If the issue is about: CI/CD, Homebrew, GitHub Actions, releases, checksum, workflow → fix .github/workflows/cicd-devops-loop.yml
-
-IMPORTANT RULES:
-1. Only return code for the file that NEEDS fixing, not both
-2. If fixing Rust code: return raw Rust code starting with "use std::env;" or "fn main"
-3. If fixing workflow: return raw YAML starting with "name:" and containing "jobs:"
-4. Do NOT add markdown code blocks (no \`\`\`)
-5. Make sure Rust code compiles with 'cargo check' before returning
-
-Analyze the user's issue and respond with ONLY the raw file content that fixes it.`
+                content: systemPrompt
               },
               {
                 role: "user",
