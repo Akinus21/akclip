@@ -22,7 +22,7 @@ jobs:
 
       - name: Compile Codebase
         id: compile
-        run: cargo build --release 2> compiler_error.log
+        run: cargo build --release 2>&1 | tee compiler_error.log
 
       - name: Remediate Compilation Failure
         if: failure()
@@ -62,7 +62,7 @@ jobs:
           fi
 
           # Capture the raw compiler logs safely
-          COMPILER_LOGS=$(cat compiler_error.log)
+          COMPILER_LOGS=$(cat compiler_error.log 2>/dev/null || echo "Build failed with no error log")
 
           # Attempt to extract a specific error line
           ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
