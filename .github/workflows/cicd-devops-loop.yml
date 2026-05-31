@@ -35,7 +35,7 @@ jobs:
 
           # Configure Git Credentials and sync upstream branches safely before changes
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           echo "compiler_error.log" >> .git/info/exclude
           echo "payload.json" >> .git/info/exclude
           git pull origin main --rebase
@@ -44,38 +44,52 @@ jobs:
           ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
           
           if [ -z "$ERROR_LINE" ]; then
-            echo "No explicit line number found in logs. Sending full file context..."
-            CONTEXT_SNIPPET=$(cat src/main.rs)
-            SYSTEM_PROMPT="You are an expert Rust engineer. Review the full code and the compiler error trace provided below. Fix the syntax error, missing delimiter, or layout mismatch. Return ONLY the raw valid content for the ENTIRE src/main.rs file, without markdown blocks or formatting wrappers."
-            USER_CONTENT="[COMPILER ERROR LOGS]:\n({COMPILER_LOGS}\n\n[CURRENT SRC/MAIN.RS]:\n){CONTEXT_SNIPPET}"
-          else
-            START_LINE=$(( ERROR_LINE - 20 ))
-            END_LINE=$(( ERROR_LINE + 20 ))
-            if [ "$START_LINE" -lt 1 ]; then START_LINE=1; fi
-            echo "Extracting context window around line $ERROR_LINE..."
-            CONTEXT_SNIPPET=$(sed -n "\({START_LINE},\){END_LINE}p" src/main.rs)
-            SYSTEM_PROMPT="You are an expert Rust engineer. Fix the syntax error, missing bracket, or block structure. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting."
-            USER_CONTENT="$CONTEXT_SNIPPET"
+            ERROR_LINE="0"
           fi
-
-          export EXPORT_SYSTEM_PROMPT="$SYSTEM_PROMPT"
-          export EXPORT_USER_CONTENT="$USER_CONTENT"
           
+          export TARGET_ERROR_LINE="$ERROR_LINE"
+          export RAW_COMPILER_LOGS="$COMPILER_LOGS"
+
+          # Use Node to safely extract context windows and build the API payload
           node -e '
           const fs = require("fs");
+          const errorLine = parseInt(process.env.TARGET_ERROR_LINE, 10);
+          const logs = process.env.RAW_COMPILER_LOGS;
+          const fileContent = fs.readFileSync("src/main.rs", "utf8");
+          
+          let systemPrompt = "";
+          let userContent = "";
+          
+          if (errorLine === 0) {
+            console.log("No explicit line number found. Preparing full file context payload...");
+            systemPrompt = "You are an expert Rust engineer. The codebase failed to compile with exit code 101. Review the full code and the compiler error trace provided below. Fix the syntax error, missing delimiter, or layout mismatch. Return ONLY the raw valid content for the ENTIRE src/main.rs file, without markdown blocks or formatting wrappers.";
+            userContent = `[COMPILER ERROR LOGS]:\n${logs}\n\n[CURRENT SRC/MAIN.RS]:\n${fileContent}`;
+          } else {
+            console.log(`Extracting context window around line ${errorLine}...`);
+            const lines = fileContent.split("\n");
+            const startLine = Math.max(1, errorLine - 20);
+            const endLine = Math.min(lines.length, errorLine + 20);
+            
+            // Slice the 40-line context window array
+            const contextWindow = lines.slice(startLine - 1, endLine).join("\n");
+            
+            systemPrompt = "You are an expert Rust engineer. The following code snippet has a syntax compiler error. Fix the layout alignment mismatch, missing bracket, or block structure. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting.";
+            userContent = contextWindow;
+          }
+          
           const payload = {
             model: "akai-net",
             stream: false,
             messages: [
-              { role: "system", content: process.env.EXPORT_SYSTEM_PROMPT },
-              { role: "user", content: process.env.EXPORT_USER_CONTENT }
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userContent }
             ]
           };
           fs.writeFileSync("payload.json", JSON.stringify(payload));
           '
           
           echo "Sending snippet payload to verified chat endpoint..."
-          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://akinus21.com" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
@@ -95,14 +109,14 @@ jobs:
                 if (line.startsWith("data:")) {
                   try {
                     const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    const delta = parsedChunk.choices[0].delta.content || "";
+                    const delta = parsedChunk.choices?.[0]?.delta?.content || "";
                     combinedContent += delta;
                   } catch (err) {}
                 }
               }
             } else {
               const data = JSON.parse(rawInput);
-              combinedContent = data.choices[0].message.content || "";
+              combinedContent = data.choices?.[0]?.message?.content || "";
             }
 
             if (!combinedContent) {
@@ -125,26 +139,33 @@ jobs:
           ')
 
           if [ -z "$FIXED_SNIPPET" ]; then
-            echo "Error: Could not parse response tokens."
+            echo "Error: Could not parse response tokens from backend."
             exit 1
           fi
 
-          if [ -z "$ERROR_LINE" ]; then
-            echo "$FIXED_SNIPPET" > src/main.rs
-          else
-            sed -e "${START_LINE},${END_LINE}d" src/main.rs > src/main.rs.tmp
-            echo "$FIXED_SNIPPET" > patch.tmp
+          export FIXED_SNIPPET_CONTENT="$FIXED_SNIPPET"
+
+          # Reconstruct the target file safely inside Node using our variables
+          node -e '
+          const fs = require("fs");
+          const errorLine = parseInt(process.env.TARGET_ERROR_LINE, 10);
+          const patch = process.env.FIXED_SNIPPET_CONTENT;
+          
+          if (errorLine === 0) {
+            fs.writeFileSync("src/main.rs", patch);
+          } else {
+            const fileContent = fs.readFileSync("src/main.rs", "utf8");
+            const lines = fileContent.split("\n");
+            const startLine = Math.max(1, errorLine - 20);
+            const endLine = Math.min(lines.length, errorLine + 20);
             
-            if [ "$START_LINE" -eq 1 ]; then
-              cat patch.tmp src/main.rs.tmp > src/main.rs
-            else
-              head -n $(( START_LINE - 1 )) src/main.rs > final.tmp
-              cat patch.tmp >> final.tmp
-              tail -n +$START_LINE src/main.rs.tmp >> final.tmp
-              mv final.tmp src/main.rs
-            fi
-            rm -f src/main.rs.tmp patch.tmp
-          fi
+            const headPart = lines.slice(0, startLine - 1);
+            const tailPart = lines.slice(endLine);
+            
+            const finalContent = [...headPart, patch, ...tailPart].join("\n");
+            fs.writeFileSync("src/main.rs", finalContent);
+          }
+          '
 
           echo "CI successfully applied snippet patch!"
 
