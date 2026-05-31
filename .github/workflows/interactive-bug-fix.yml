@@ -40,7 +40,7 @@ jobs:
           fs.writeFileSync("interactive_payload.json", JSON.stringify(payload));
           '
 
-          curl -s -X POST "https://ollama.akinus21.com" \
+          curl -s -X POST "https://ollama.akinus21.com/v1" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -d @interactive_payload.json
