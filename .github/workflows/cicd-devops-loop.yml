@@ -8,8 +8,7 @@ jobs:
   devops-pipeline:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write # Required to push directly to main
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -64,15 +63,11 @@ jobs:
           '
           
           echo "Sending snippet payload to verified chat endpoint with redirect forwarding..."
-          # FIXED: Added -L, --post301, --post302, --post303 flags to pass payload through ollama-queue 307 redirects safely
-          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://akinus21.com" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
             -d @payload.json)
-
-          echo "Raw Cluster Response:"
-          echo "$RESPONSE"
 
           FIXED_SNIPPET=$(echo "$RESPONSE" | node -e '
           const fs = require("fs");
@@ -80,7 +75,6 @@ jobs:
             const rawInput = fs.readFileSync(0, "utf8");
             let combinedContent = "";
 
-            // Check if backend returned a stream or single object
             if (rawInput.trim().startsWith("data:")) {
               const lines = rawInput.split("\n");
               for (let line of lines) {
@@ -89,56 +83,50 @@ jobs:
                 if (line.startsWith("data:")) {
                   try {
                     const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    const delta = parsedChunk.choices?.[0]?.delta?.content || "";
+                    const delta = parsedChunk.choices[0].delta.content || "";
                     combinedContent += delta;
-                  } catch (err) {
-                    // Ignore malformed partial boundary frames
-                  }
+                  } catch (err) {}
                 }
               }
             } else {
-              // Fallback to non-streaming object parsing
               const data = JSON.parse(rawInput);
-              combinedContent = data.choices?.[0]?.message?.content || "";
+              combinedContent = data.choices[0].message.content || "";
             }
 
             if (!combinedContent) {
-              console.error("Empty content stream received or structural parsing mismatch.");
+              console.error("Empty content stream received.");
               process.exit(1);
             }
 
             process.stdout.write(combinedContent);
           } catch (e) {
-            console.error("Failed parsing valid engine tokens:", e.message);
+            console.error("Failed parsing tokens:", e.message);
             process.exit(1);
           }
           ')
 
-
           if [ -z "$FIXED_SNIPPET" ]; then
-            echo "Error: Could not parse response choice tokens from cluster layout."
+            echo "Error: Could not parse response tokens."
             exit 1
           fi
 
           echo "$FIXED_SNIPPET" > src/main.rs
           echo "CI successfully applied snippet patch!"
 
+          # Configure Git Credentials
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@://github.com"
           
-          BRANCH_NAME="ai-patch-${{ github.run_id }}-$RANDOM"
-          git checkout -b "$BRANCH_NAME"
+          # Pull latest upstream to prevent conflict loops before forcing changes
+          git pull origin main --rebase
+
+          # Track, commit, and push directly to main
           git add src/main.rs
-          git commit -m "fix(ci): autonomously patched context window syntax failure"
-          git push origin "$BRANCH_NAME"
+          git commit -m "fix(ci): autonomously patched context window syntax failure [skip ci]"
+          git push origin main
 
-          gh pr create \
-            --title "🤖 AI Patch: Fixed layout mismatch around line $ERROR_LINE" \
-            --body "This PR was generated entirely by your single-job CI pipeline, feeding a 40-line snippet window surrounding your compiler crash line into your akai-net node." \
-            --base main \
-            --head "$BRANCH_NAME"
-
-      - name: Checkout Homebrew Tap Repository
+      - name: Manage Homebrew Release Tap
+        if: success()
         uses: actions/checkout@v4
         with:
           repository: 'Akinus21/homebrew-tap'
