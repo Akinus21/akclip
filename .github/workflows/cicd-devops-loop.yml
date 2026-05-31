@@ -8,12 +8,12 @@ jobs:
   devops-pipeline:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Required to push directly to main
+      contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: \${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
       - name: Setup Rust Toolchain
@@ -33,9 +33,9 @@ jobs:
           # Capture the raw compiler logs safely
           COMPILER_LOGS=\$(cat compiler_error.log)
 
-          # 1. IMMEDIATE FIX: Pull upstream changes first before modifying local files
+          # Configure Git Credentials and sync upstream branches safely before changes
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           echo "compiler_error.log" >> .git/info/exclude
           echo "payload.json" >> .git/info/exclude
           git pull origin main --rebase
@@ -95,14 +95,14 @@ jobs:
                 if (line.startsWith("data:")) {
                   try {
                     const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    const delta = parsedChunk.choices?.[0]?.delta?.content || "";
+                    const delta = parsedChunk.choices[0]?.delta?.content || parsedChunk.choices?.delta?.content || "";
                     combinedContent += delta;
                   } catch (err) {}
                 }
               }
             } else {
               const data = JSON.parse(rawInput);
-              combinedContent = data.choices?.[0]?.message?.content || "";
+              combinedContent = data.choices[0]?.message?.content || data.choices?.message?.content || "";
             }
 
             if (!combinedContent) {
@@ -110,12 +110,10 @@ jobs:
               process.exit(1);
             }
 
-            // 2. IMMEDIATE FIX: Strip out stubborn markdown backtick block enclosures completely
+            // Strip markdown backtick enclosures if the model injected them
             let cleaned = combinedContent.trim();
             if (cleaned.startsWith("```")) {
-              // Strip leading block declaration (e.g. ```rust or ```nohighlight)
               cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
-              // Strip trailing block declaration
               cleaned = cleaned.replace(/```$/, "");
             }
             
