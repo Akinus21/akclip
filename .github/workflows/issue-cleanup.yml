@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   cleanup-issue:
+    if: startsWith(github.event.pull_request.head.ref, 'issue-')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code

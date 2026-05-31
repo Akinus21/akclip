@@ -23,19 +23,32 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Skip Merge Commits
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          if [[ "$COMMIT_MSG" == Merge\ pull\ request* ]]; then
+            echo "Skipping merge commit..."
+            echo "SKIP_BUILD=true" >> $GITHUB_OUTPUT
+          else
+            echo "SKIP_BUILD=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Compile Codebase
+        if: env.SKIP_BUILD != 'true'
+        id: compile
+        run: cargo build --release 2>&1 | tee compiler_error.log
         id: compile
         run: cargo build --release 2>&1 | tee compiler_error.log
 
       - name: Upload Build Artifact
-        if: success()
+        if: success() && env.SKIP_BUILD != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: akclip-binary
           path: target/release/akclip
 
       - name: Create PR on Success
-        if: success()
+        if: success() && env.SKIP_BUILD != 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
@@ -56,7 +69,7 @@ jobs:
           fi
 
       - name: Remediate Any Failure
-        if: failure()
+        if: failure() && env.SKIP_BUILD != 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPO_SLUG: ${{ github.repository }}
