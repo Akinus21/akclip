@@ -5,12 +5,10 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      build_status: ${{ job.status }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -26,18 +24,105 @@ jobs:
         run: cargo build --release 2>&1 | tee compiler_error.log
 
       - name: Upload Build Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: akclip-binary
           path: target/release/akclip
 
-      - name: Check for Compilation Errors
+      - name: Package Release Artifacts
+        if: success()
+        run: |
+          chmod +x akclip
+          mkdir -p release
+          tar czf release/akclip.tar.gz akclip
+
+      - name: Generate SHA256
+        id: sha
+        if: success()
+        run: |
+          SHA256=$(sha256sum release/akclip.tar.gz | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Get Latest Tag
+        id: tag
+        if: success()
+        run: |
+          git fetch --tags
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          VERSION=${LATEST_TAG#v}
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          patch=$((patch + 1))
+          NEW_TAG="v${major}.${minor}.${patch}"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "previous_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: release/akclip.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Create Homebrew Formula
+        if: success()
+        run: |
+          mkdir -p homebrew-formula
+          cat > homebrew-formula/akclip.rb << 'RUBY'
+          class Akclip < Formula
+            desc "Clipboard utility for capturing stdin"
+            homepage "https://github.com/Akinus21/akclip"
+            url "https://github.com/Akinus21/akclip/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz"
+            sha256 "${{ steps.sha.outputs.sha256 }}"
+            license "MIT"
+            version "${{ steps.tag.outputs.tag }}"
+
+            def install
+              system "tar", "xzf", "akclip.tar.gz"
+              bin.install "akclip/target/release/akclip"
+            end
+
+            test do
+              system "#{bin}/akclip", "--help"
+            end
+          end
+          RUBY
+
+      - name: Update Homebrew Tap
+        if: success()
+        uses: actions/checkout@v4
+        with:
+          repository: Akinus21/homebrew-tap
+          path: homebrew-tap
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure Git and Push Homebrew Formula
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          cd homebrew-tap
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/Akinus21/homebrew-tap.git"
+          mkdir -p Formula
+          cp ../homebrew-formula/akclip.rb Formula/akclip.rb
+          git add Formula/akclip.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | sed 's/.*: //')
+          git commit -m "chore(homebrew): update akclip to ${{ steps.tag.outputs.tag }}" || echo "No changes to commit"
+          git push origin $DEFAULT_BRANCH
+
+      - name: Remediate Any Failure
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPO_SLUG: ${{ github.repository }}
         run: |
-          echo "Analyzing compiler trace inside active workspace..."
+          echo "Analyzing failure inside active workspace..."
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -61,58 +146,43 @@ jobs:
           LOOP_COUNT=$(git log -n 10 --format="%s" | grep -c "autonomously patched" || true)
           echo "Current autonomous remediation loop depth: $LOOP_COUNT"
           if [ "$LOOP_COUNT" -ge 3 ]; then
-            echo "CRITICAL: Maximum iteration depth reached (3 attempts). AI failed to solve compilation error."
+            echo "CRITICAL: Maximum iteration depth reached (3 attempts). AI failed to solve error."
             echo "Breaking recursive loop execution to prevent resource exhaustion."
             exit 1
           fi
 
-          COMPILER_LOGS=$(cat compiler_error.log 2>/dev/null || echo "Build failed with no error log")
+          COMPILER_LOGS=$(cat compiler_error.log 2>/dev/null || echo "Workflow/Build failed")
+          WORKFLOW_FILE=$(cat .github/workflows/cicd-devops-loop.yml 2>/dev/null || echo "")
 
-          ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2 || echo "0")
-          if [ -z "$ERROR_LINE" ]; then
-            ERROR_LINE="0"
-          fi
-
-          export TARGET_ERROR_LINE="$ERROR_LINE"
           export RAW_COMPILER_LOGS="$COMPILER_LOGS"
 
           node -e '
           const fs = require("fs");
-          const errorLine = parseInt(process.env.TARGET_ERROR_LINE, 10);
           const logs = process.env.RAW_COMPILER_LOGS;
-          const fileContent = fs.readFileSync("src/main.rs", "utf8");
-
-          let systemPrompt = "";
-          let userContent = "";
-
-          if (errorLine === 0) {
-            console.log("No explicit line number found. Preparing full file context payload...");
-            systemPrompt = "You are an expert Rust engineer. The codebase failed to compile with exit code 101. Review the full code and the compiler error trace provided below. Fix the syntax error, missing delimiter, or layout mismatch. Return ONLY the raw valid content for the ENTIRE src/main.rs file, without markdown blocks or formatting wrappers.";
-            userContent = `[COMPILER ERROR LOGS]:\n${logs}\n\n[CURRENT SRC/MAIN.RS]:\n${fileContent}`;
-          } else {
-            console.log(`Extracting context window around line ${errorLine}...`);
-            const lines = fileContent.split("\n");
-            const startLine = Math.max(1, errorLine - 20);
-            const endLine = Math.min(lines.length, errorLine + 20);
-
-            const contextWindow = lines.slice(startLine - 1, endLine).join("\n");
-
-            systemPrompt = "You are an expert Rust engineer. The following code snippet has a syntax compiler error. Fix the layout alignment mismatch, missing bracket, or block structure. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting.";
-            userContent = contextWindow;
-          }
+          const mainRs = fs.readFileSync("src/main.rs", "utf8");
+          let workflowContent = "";
+          try {
+            workflowContent = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8");
+          } catch (e) {}
 
           const payload = {
             model: "akai-net",
             stream: false,
             messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userContent }
+              {
+                role: "system",
+                content: "You are an expert Rust engineer and DevOps engineer. The build/release workflow failed. Analyze the error logs and fix the appropriate file(s). Return the raw file content for any file you modify. If it is a Rust error, fix src/main.rs. If it is a workflow/shell/git error, fix .github/workflows/cicd-devops-loop.yml. Return the raw file content WITHOUT markdown blocks or formatting wrappers."
+              },
+              {
+                role: "user",
+                content: `[ERROR LOGS]:\n${logs}\n\n[src/main.rs]:\n${mainRs}\n\n[WORKFLOW FILE (.github/workflows/cicd-devops-loop.yml)]:\n${workflowContent}`
+              }
             ]
           };
           fs.writeFileSync("payload.json", JSON.stringify(payload));
           '
 
-          echo "Sending snippet payload to verified chat endpoint..."
+          echo "Sending payload to AI endpoint for remediation..."
           CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
@@ -156,138 +226,35 @@ jobs:
               cleaned = cleaned.replace(/```$/, "");
             }
 
-            const errorLine = parseInt(process.env.TARGET_ERROR_LINE, 10);
-            if (errorLine === 0) {
+            // Try to detect which file needs fixing based on content patterns
+            if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
+              // Looks like a workflow file
+              fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
+              console.log("Workflow file modifications applied!");
+            } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
+              // Looks like Rust code
               fs.writeFileSync("src/main.rs", cleaned);
+              console.log("Rust file modifications applied!");
             } else {
-              const fileContent = fs.readFileSync("src/main.rs", "utf8");
-              const lines = fileContent.split("\n");
-              const startLine = Math.max(1, errorLine - 20);
-              const endLine = Math.min(lines.length, errorLine + 20);
-
-              const headPart = lines.slice(0, startLine - 1);
-              const tailPart = lines.slice(endLine);
-
-              const finalContent = [...headPart, cleaned, ...tailPart].join("\n");
-              fs.writeFileSync("src/main.rs", finalContent);
+              // Default to main.rs
+              fs.writeFileSync("src/main.rs", cleaned);
+              console.log("Defaulting to Rust file modifications applied!");
             }
-            console.log("File modifications successfully applied!");
           } catch (e) {
-            console.error("Failed processing layout token changes:", e.message);
+            console.error("Failed processing response:", e.message);
             process.exit(1);
           }
           '
 
-          echo "CI successfully applied snippet patch!"
+          echo "CI successfully applied patch!"
 
-          if git diff --quiet src/main.rs; then
-            echo "The AI patch matches the existing code. No new changes to commit."
+          if git diff --quiet; then
+            echo "The AI patch matches the existing code. No changes to commit."
             echo "Breaking loop to prevent an infinite cycle."
             exit 0
           else
-            echo "Changes detected! Staging and committing to main..."
-            git add src/main.rs
-            git commit -m "fix(ci): autonomously patched context window syntax failure"
+            echo "Changes detected! Staging and committing..."
+            git add -A
+            git commit -m "fix(ci): autonomously patched failure"
             git push origin main
           fi
-
-  release:
-    needs: build
-    if: needs.build.outputs.build_status == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 0
-
-      - name: Setup Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Download Build Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: akclip-binary
-
-      - name: Package Artifacts
-        run: |
-          chmod +x akclip
-          mkdir -p release
-          tar czf release/akclip.tar.gz akclip
-
-      - name: Generate SHA256
-        id: sha
-        run: |
-          SHA256=$(sha256sum release/akclip.tar.gz | cut -d' ' -f1)
-          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
-
-      - name: Get Latest Tag
-        id: tag
-        run: |
-          git fetch --tags
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          VERSION=${LATEST_TAG#v}
-          IFS='.' read -r major minor patch <<< "$VERSION"
-          patch=$((patch + 1))
-          NEW_TAG="v${major}.${minor}.${patch}"
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          echo "previous_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          files: release/akclip.tar.gz
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Create Homebrew Formula
-        run: |
-          mkdir -p homebrew-formula
-          cat > homebrew-formula/akclip.rb << 'RUBY'
-          class Akclip < Formula
-            desc "Clipboard utility for capturing stdin"
-            homepage "https://github.com/Akinus21/akclip"
-            url "https://github.com/Akinus21/akclip/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz"
-            sha256 "${{ steps.sha.outputs.sha256 }}"
-            license "MIT"
-            version "${{ steps.tag.outputs.tag }}"
-
-            def install
-              system "tar", "xzf", "akclip.tar.gz"
-              bin.install "akclip/target/release/akclip"
-            end
-
-            test do
-              system "#{bin}/akclip", "--help"
-            end
-          end
-          RUBY
-
-      - name: Update Homebrew Tap
-        uses: actions/checkout@v4
-        with:
-          repository: Akinus21/homebrew-tap
-          path: homebrew-tap
-          token: ${{ secrets.GH_TOKEN }}
-          persist-credentials: true
-          fetch-depth: 0
-
-      - name: Configure Git and Push Homebrew Formula
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          cd homebrew-tap
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/Akinus21/homebrew-tap.git"
-          mkdir -p Formula
-          cp ../homebrew-formula/akclip.rb Formula/akclip.rb
-          git add Formula/akclip.rb
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | sed 's/.*: //')
-          git commit -m "chore(homebrew): update akclip to ${{ steps.tag.outputs.tag }}" || echo "No changes to commit"
-          git push origin $DEFAULT_BRANCH
