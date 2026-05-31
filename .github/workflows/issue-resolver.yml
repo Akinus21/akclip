@@ -103,17 +103,11 @@ jobs:
             echo "CRITICAL: Maximum iteration depth reached (10 attempts)."
             echo "Creating issue to report persistent failure..."
             LOOP_HISTORY=$(git log -n 10 --oneline)
-            ISSUE_BODY=$(cat <<'EOFBODY'
-The autonomous agent attempted 10 iterations to fix issue but was unsuccessful. Manual intervention required.
-
-Loop history:
-EOFBODY
-)
-            ISSUE_BODY="${ISSUE_BODY}
-${LOOP_HISTORY}
-"
-            ISSUE_BODY="${ISSUE_BODY}
-Please review and provide guidance."
+            ISSUE_BODY=$(printf '%s\n%s\n\n%s\n%s\n' \
+              "The autonomous agent attempted 10 iterations to fix issue but was unsuccessful. Manual intervention required." \
+              "Loop history:" \
+              "${LOOP_HISTORY}" \
+              "Please review and provide guidance.")
             gh issue create \
               --title "Automated Fix Failed: Issue #${ISSUE_NUM}" \
               --body "${ISSUE_BODY}"

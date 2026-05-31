@@ -83,17 +83,12 @@ jobs:
 
             echo "Summary: $SUMMARY"
 
-            COMMENT_BODY=$(cat <<'EOFCOMMENT'
-## Fix Merged!
-
-PR #EOFCOMMENT
-)
-            COMMENT_BODY="${COMMENT_BODY}${PR_NUMBER} has been merged.
-
-**Summary of changes:**
-${SUMMARY}
-
-Thank you for reporting this issue!"
+            COMMENT_BODY=$(printf '%s\n%s\n\n%s\n%s\n' \
+              "## Fix Merged!" \
+              "PR #${PR_NUMBER} has been merged." \
+              "**Summary of changes:**" \
+              "${SUMMARY}")
+            COMMENT_BODY="${COMMENT_BODY}"$'\n'"Thank you for reporting this issue!"
             gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
 
             # Close the issue
