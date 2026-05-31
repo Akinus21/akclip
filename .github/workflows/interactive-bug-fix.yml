@@ -50,8 +50,9 @@ jobs:
           mkdir -p .git/info
           echo "payload.json" >> .git/info/exclude
           echo "response.txt" >> .git/info/exclude
+          echo "fix.js" >> .git/info/exclude
 
-          node -e '
+          cat > fix.js << 'ENDSCRIPT'
           const fs = require("fs");
           const issueBody = process.env.ISSUE_BODY || "";
           const commentBody = process.env.COMMENT_BODY || "";
@@ -61,15 +62,15 @@ jobs:
             workflowContent = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8");
           } catch (e) {}
 
-          const userMessage = `[ISSUE DESCRIPTION]:\n${issueBody}\n\n[COMMENT FROM USER]:\n${commentBody}\n\n[CURRENT src/main.rs]:\n${mainRs}\n\n[CURRENT WORKFLOW (.github/workflows/cicd-devops-loop.yml)]:\n${workflowContent}`;
+          const userMessage = "[ISSUE DESCRIPTION]:\n" + issueBody + "\n\n[COMMENT FROM USER]:\n" + commentBody + "\n\n[CURRENT src/main.rs]:\n" + mainRs + "\n\n[CURRENT WORKFLOW]:\n" + workflowContent;
 
           const systemPrompt = "You are an expert Rust engineer and DevOps engineer. " +
             "DIAGNOSE the issue first, then only fix the appropriate file. " +
-            "If the issue is about: compilation error, runtime bug, panic, wrong output → fix src/main.rs. " +
-            "If the issue is about: CI/CD, Homebrew, GitHub Actions, releases, checksum, workflow → fix .github/workflows/cicd-devops-loop.yml. " +
+            "If the issue is about: compilation error, runtime bug, panic, wrong output - fix src/main.rs. " +
+            "If the issue is about: CI/CD, Homebrew, GitHub Actions, releases, checksum, workflow - fix .github/workflows/cicd-devops-loop.yml. " +
             "IMPORTANT RULES: " +
             "1. Only return code for the file that NEEDS fixing, not both. " +
-            "2. If fixing Rust code: return raw Rust code starting with use std::env; or fn main. " +
+            "2. If fixing Rust code: return raw Rust code starting with use std or fn main. " +
             "3. If fixing workflow: return raw YAML starting with name: and containing jobs:. " +
             "4. Do NOT add markdown code blocks. " +
             "5. Make sure Rust code compiles before returning. " +
@@ -79,18 +80,14 @@ jobs:
             model: "akai-net",
             stream: false,
             messages: [
-              {
-                role: "system",
-                content: systemPrompt
-              },
-              {
-                role: "user",
-                content: userMessage
-              }
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userMessage }
             ]
           };
           fs.writeFileSync("payload.json", JSON.stringify(payload));
-          '
+          ENDSCRIPT
+
+          node fix.js
 
           echo "Sending issue to AI for diagnosis and fix..."
           CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
@@ -101,7 +98,7 @@ jobs:
 
           echo "$CurlResponse" > response.txt
 
-          node -e '
+          cat > parse.js << 'ENDPARSE'
           const fs = require("fs");
           try {
             const rawInput = fs.readFileSync("response.txt", "utf8").trim();
@@ -131,6 +128,7 @@ jobs:
             }
 
             let cleaned = combinedContent.trim();
+            // Remove markdown code blocks
             if (cleaned.startsWith("```")) {
               cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
               cleaned = cleaned.replace(/```$/, "");
@@ -154,7 +152,9 @@ jobs:
             console.error("Failed processing response:", e.message);
             process.exit(1);
           }
-          '
+          ENDPARSE
+
+          node parse.js
 
           DETECTED_FILE=$(cat detected_file.txt)
 
