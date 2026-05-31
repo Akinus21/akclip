@@ -132,24 +132,52 @@ jobs:
           const issueBody = process.env.ISSUE_BODY || "";
           const commentBody = process.env.COMMENT_BODY || "";
           const mainRs = fs.readFileSync("src/main.rs", "utf8");
-          let workflowContent = "";
-          try {
-            workflowContent = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8");
-          } catch (e) {}
+          let agentsMd = "";
+          let cargoToml = "";
+          let readmeMd = "";
+          let cicdWorkflow = "";
+          let issueWorkflow = "";
+          let releaseWorkflow = "";
+          let cleanupWorkflow = "";
 
-          const userMessage = "[ISSUE DESCRIPTION]:\n" + issueBody + "\n\n[COMMENT FROM USER]:\n" + commentBody + "\n\n[CURRENT src/main.rs]:\n" + mainRs + "\n\n[CURRENT WORKFLOW]:\n" + workflowContent;
+          try { agentsMd = fs.readFileSync(".github/agents/devops-sre.md", "utf8"); } catch (e) {}
+          try { cargoToml = fs.readFileSync("Cargo.toml", "utf8"); } catch (e) {}
+          try { readmeMd = fs.readFileSync("README.md", "utf8"); } catch (e) {}
+          try { cicdWorkflow = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8"); } catch (e) {}
+          try { issueWorkflow = fs.readFileSync(".github/workflows/issue-resolver.yml", "utf8"); } catch (e) {}
+          try { releaseWorkflow = fs.readFileSync(".github/workflows/release-sync.yml", "utf8"); } catch (e) {}
+          try { cleanupWorkflow = fs.readFileSync(".github/workflows/issue-cleanup.yml", "utf8"); } catch (e) {}
 
-          const systemPrompt = "You are an expert Rust engineer and DevOps engineer. " +
-            "DIAGNOSE the issue first, then only fix the appropriate file. " +
-            "If the issue is about: compilation error, runtime bug, panic, wrong output - fix src/main.rs. " +
-            "If the issue is about: CI/CD, Homebrew, GitHub Actions, releases, checksum, workflow - fix .github/workflows/cicd-devops-loop.yml. " +
-            "IMPORTANT RULES: " +
-            "1. Only return code for the file that NEEDS fixing, not both. " +
-            "2. If fixing Rust code: return raw Rust code starting with use std or fn main. " +
-            "3. If fixing workflow: return raw YAML starting with name: and containing jobs:. " +
-            "4. Do NOT add markdown code blocks. " +
-            "5. Make sure Rust code compiles before returning. " +
-            "Analyze the user's issue and respond with ONLY the raw file content that fixes it.";
+          const userMessage = "[ISSUE DESCRIPTION]:\n" + issueBody + "\n\n[COMMENT FROM USER]:\n" + commentBody + "\n\nThe user has reported an issue with akclip. Please diagnose and fix it using the project context provided above.";
+
+          const systemPrompt = "You are an expert Rust engineer and DevOps engineer. Your role is to diagnose and fix issues autonomously.\n\n" +
+            "## PROJECT CONTEXT\n\n" +
+            "This is akclip - a Rust CLI tool that captures stdin to clipboard. It uses arboard for clipboard access.\n\n" +
+            "## PROJECT FILES\n\n" +
+            "[Cargo.toml]:\n" + cargoToml + "\n\n" +
+            "[src/main.rs]:\n" + mainRs + "\n\n" +
+            "[README.md]:\n" + readmeMd + "\n\n" +
+            "## WORKFLOW FILES\n\n" +
+            "[cicd-devops-loop.yml]:\n" + cicdWorkflow + "\n\n" +
+            "[issue-resolver.yml]:\n" + issueWorkflow + "\n\n" +
+            "[release-sync.yml]:\n" + releaseWorkflow + "\n\n" +
+            "[issue-cleanup.yml]:\n" + cleanupWorkflow + "\n\n" +
+            "## AGENTS.md (Agent Guidelines):\n" + agentsMd + "\n\n" +
+            "## YOUR TASK\n\n" +
+            "1. DIAGNOSE the issue based on user's description\n" +
+            "2. FIX the appropriate file(s):\n" +
+            "   - Rust compilation/runtime errors -> fix src/main.rs\n" +
+            "   - CI/CD, GitHub Actions, Homebrew, releases, checksums -> fix relevant workflow file\n" +
+            "   - Logic errors -> fix src/main.rs\n\n" +
+            "## IMPORTANT RULES\n\n" +
+            "1. Only return code for the file that NEEDS fixing\n" +
+            "2. Rust code: start with 'use std::env;' or 'fn main'\n" +
+            "3. Workflow code: start with 'name:' and contain 'jobs:'\n" +
+            "4. Do NOT use markdown code blocks (no ```)\n" +
+            "5. Make sure Rust code compiles before returning\n" +
+            "6. For Homebrew issues: the tarball structure should be akclip/target/release/akclip\n" +
+            "7. For checksum issues: SHA256 must match the GitHub release asset exactly\n\n" +
+            "Analyze the issue and respond with ONLY the raw file content that fixes it.";
 
           const payload = {
             model: "akai-net",
