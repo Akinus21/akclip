@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   resolve-issue:
-    if: !contains(github.event.comment.body, '/close')
+    if: "!contains(github.event.comment.body, '/close')"
     runs-on: ubuntu-latest
     outputs:
       issue_num: ${{ steps.issue_info.outputs.ISSUE_NUM }}
