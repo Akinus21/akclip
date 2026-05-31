@@ -61,6 +61,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           ISSUE_NUM: ${{ steps.issue_info.outputs.ISSUE_NUM }}
         run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
           ISSUE_NUM=${{ steps.issue_info.outputs.ISSUE_NUM }}
           BRANCH_NAME="issue-${ISSUE_NUM}"
 
