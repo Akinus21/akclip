@@ -31,12 +31,6 @@ jobs:
           chmod +x target/release/akclip
           tar czf release/akclip.tar.gz -C target/release akclip
 
-      - name: Generate SHA256
-        id: sha
-        run: |
-          SHA256=$(sha256sum release/akclip.tar.gz | cut -d' ' -f1)
-          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
-
       - name: Get Latest Tag
         id: tag
         run: |
@@ -58,31 +52,72 @@ jobs:
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
           echo "previous_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
 
-      - name: Create Git Tag
+      - name: Create Git Tag and Release
         run: |
           git tag ${{ steps.tag.outputs.tag }}
           git push origin ${{ steps.tag.outputs.tag }}
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          files: release/akclip.tar.gz
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          # Wait a moment for tag to propagate
+          sleep 2
+
+          # Create release and upload asset
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/Akinus21/akclip/releases" \
+            -d '{
+              "tag_name": "'${{ steps.tag.outputs.tag }}'",
+              "name": "Release '${{ steps.tag.outputs.tag }}'",
+              "draft": true
+            }')
+
+          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
+          echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+
+          # Upload asset
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            "https://uploads.github.com/repos/Akinus21/akclip/releases/${RELEASE_ID}/assets?name=akclip.tar.gz" \
+            --data-binary @release/akclip.tar.gz > /dev/null
+
+          # Make release public
+          curl -s -X PATCH \
+            -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/Akinus21/akclip/releases/${RELEASE_ID}" \
+            -d '{"draft":false}'
+
+      - name: Get SHA256 from GitHub Release Asset
+        id: sha
+        run: |
+          # Get the download URL for the asset
+          ASSET_INFO=$(curl -s -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+            "https://api.github.com/repos/Akinus21/akclip/releases/tags/${{ steps.tag.outputs.tag }}")
+
+          ASSET_URL=$(echo "$ASSET_INFO" | jq -r '.assets[] | select(.name == "akclip.tar.gz") | .browser_download_url')
+          echo "asset_url=$ASSET_URL" >> $GITHUB_OUTPUT
+
+          # Download and get SHA256
+          curl -sL "$ASSET_URL" -o downloaded.tar.gz
+          SHA256=$(sha256sum downloaded.tar.gz | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
       - name: Create Homebrew Formula
+        env:
+          SHA256: ${{ steps.sha.outputs.sha256 }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          ASSET_URL: ${{ steps.sha.outputs.asset_url }}
         run: |
           mkdir -p homebrew-formula
           cat > homebrew-formula/akclip.rb << 'RUBY'
           class Akclip < Formula
             desc "Clipboard utility for capturing stdin"
             homepage "https://github.com/Akinus21/akclip"
-            url "https://github.com/Akinus21/akclip/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz"
-            sha256 "${{ steps.sha.outputs.sha256 }}"
+            url "ASSET_URL_PLACEHOLDER"
+            sha256 "SHA256_PLACEHOLDER"
             license "MIT"
-            version "${{ steps.tag.outputs.tag }}"
+            version "VERSION_PLACEHOLDER"
 
             def install
               system "tar", "xzf", "akclip.tar.gz"
@@ -94,6 +129,10 @@ jobs:
             end
           end
           RUBY
+
+          sed -i "s|ASSET_URL_PLACEHOLDER|${ASSET_URL}|g" homebrew-formula/akclip.rb
+          sed -i "s|SHA256_PLACEHOLDER|${SHA256}|g" homebrew-formula/akclip.rb
+          sed -i "s|VERSION_PLACEHOLDER|${TAG}|g" homebrew-formula/akclip.rb
 
       - name: Update Homebrew Tap
         uses: actions/checkout@v4
