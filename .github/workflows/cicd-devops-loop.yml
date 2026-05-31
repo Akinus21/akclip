@@ -30,39 +30,45 @@ jobs:
         run: |
           echo "Analyzing compiler trace inside active workspace..."
           
+          # Capture the raw compiler logs safely
+          COMPILER_LOGS=$(cat compiler_error.log)
+          echo "Raw Compiler Output:\n$COMPILER_LOGS"
+
+          # Attempt to extract a specific error line
           ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
-          if [ -z "$ERROR_LINE" ]; then
-            ERROR_LINE=66
-          fi
           
-          START_LINE=$(( ERROR_LINE - 20 ))
-          END_LINE=$(( ERROR_LINE + 20 ))
-          if [ "$START_LINE" -lt 1 ]; then START_LINE=1; fi
+          if [ -z "$ERROR_LINE" ]; then
+            echo "No explicit line number found in logs. Sending full file context + compiler error trace..."
+            CONTEXT_SNIPPET=$(cat src/main.rs)
+            SYSTEM_PROMPT="You are an expert Rust engineer. The codebase failed to compile with exit code 101. Review the full code and the compiler error trace provided below. Fix the syntax error, missing delimiter, or layout mismatch. Return ONLY the raw valid content for the ENTIRE src/main.rs file, without markdown blocks or formatting wrappers."
+            USER_CONTENT="[COMPILER ERROR LOGS]:\n$COMPILER_LOGS\n\n[CURRENT SRC/MAIN.RS]:\n$CONTEXT_SNIPPET"
+          else
+            START_LINE=$(( ERROR_LINE - 20 ))
+            END_LINE=$(( ERROR_LINE + 20 ))
+            if [ "$START_LINE" -lt 1 ]; then START_LINE=1; fi
+            echo "Extracting context window around line $ERROR_LINE (Lines $START_LINE to $END_LINE)..."
+            CONTEXT_SNIPPET=$(sed -n "${START_LINE},${END_LINE}p" src/main.rs)
+            SYSTEM_PROMPT="You are an expert Rust engineer. The following code snippet has an unclosed delimiter syntax error. Fix the layout alignment mismatch or missing bracket. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting."
+            USER_CONTENT="$CONTEXT_SNIPPET"
+          fi
 
-          echo "Extracting context window around line $ERROR_LINE (Lines $START_LINE to $END_LINE)..."
-          CONTEXT_SNIPPET=$(sed -n "${START_LINE},${END_LINE}p" src/main.rs)
-
-          export SNIPPET_CONTENT="$CONTEXT_SNIPPET"
+          export EXPORT_SYSTEM_PROMPT="$SYSTEM_PROMPT"
+          export EXPORT_USER_CONTENT="$USER_CONTENT"
+          
           node -e '
           const fs = require("fs");
           const payload = {
             model: "akai-net",
             stream: false,
             messages: [
-              {
-                role: "system",
-                content: "You are an expert Rust engineer. The following code snippet has an unclosed delimiter syntax error. Fix the layout alignment mismatch or missing bracket. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting."
-              },
-              {
-                role: "user",
-                content: process.env.SNIPPET_CONTENT
-              }
+              { role: "system", content: process.env.EXPORT_SYSTEM_PROMPT },
+              { role: "user", content: process.env.EXPORT_USER_CONTENT }
             ]
           };
           fs.writeFileSync("payload.json", JSON.stringify(payload));
           '
           
-          echo "Sending snippet payload to verified chat endpoint with redirect forwarding..."
+          echo "Sending snippet payload to verified chat endpoint..."
           RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
@@ -110,21 +116,38 @@ jobs:
             exit 1
           fi
 
-          echo "$FIXED_SNIPPET" > src/main.rs
+          # If no error line was found, replace the whole file. 
+          # If an error line was found, replace the local context window using temporary files.
+          if [ -z "$ERROR_LINE" ]; then
+            echo "$FIXED_SNIPPET" > src/main.rs
+          else
+            # Reconstruct the file safely with the patched window snippet
+            sed -e "${START_LINE},${END_LINE}d" src/main.rs > src/main.rs.tmp
+            echo "$FIXED_SNIPPET" > patch.tmp
+            
+            # Insert the patch back into the target window location
+            if [ "$START_LINE" -eq 1 ]; then
+              cat patch.tmp src/main.rs.tmp > src/main.rs
+            else
+              head -n $(( START_LINE - 1 )) src/main.rs > final.tmp
+              cat patch.tmp >> final.tmp
+              tail -n +$START_LINE src/main.rs.tmp >> final.tmp
+              mv final.tmp src/main.rs
+            fi
+            rm -f src/main.rs.tmp patch.tmp
+          fi
+
           echo "CI successfully applied snippet patch!"
 
           # Configure Git Credentials
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Ignore temporary files locally without altering tracked files
           echo "compiler_error.log" >> .git/info/exclude
           echo "payload.json" >> .git/info/exclude
 
-          # Pull latest upstream to prevent conflict loops before forcing changes
           git pull origin main --rebase
 
-          # Check if the AI patch actually altered the file contents
           if git diff --quiet src/main.rs; then
             echo "The AI patch matches the existing code. No new changes to commit."
             echo "Breaking loop to prevent an infinite cycle."
@@ -135,6 +158,7 @@ jobs:
             git commit -m "fix(ci): autonomously patched context window syntax failure"
             git push origin main
           fi
+
 
       - name: Manage Homebrew Release Tap
         if: success()
