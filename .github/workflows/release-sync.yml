@@ -29,7 +29,11 @@ jobs:
           cargo build --release
           mkdir -p release
           chmod +x target/release/akclip
-          tar czf release/akclip.tar.gz -C target/release akclip
+          # Create tarball with proper structure: akclip/target/release/akclip
+          mkdir -p akclip/target/release
+          cp target/release/akclip akclip/target/release/
+          tar czf release/akclip.tar.gz akclip
+          rm -rf akclip
 
       - name: Get Latest Tag
         id: tag
