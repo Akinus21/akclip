@@ -1,4 +1,3 @@
-```nohighlight
 fn main() {
     match env::args() {
         [] => {
@@ -19,5 +18,7 @@ fn main() {
             println!("   --help: Show help");
             return;
         }
+    }
+}
     }
 }
