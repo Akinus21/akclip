@@ -63,7 +63,7 @@ jobs:
           '
           
           echo "Sending snippet payload to verified chat endpoint with redirect forwarding..."
-          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://akinus21.com" \
+          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
