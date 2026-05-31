@@ -14,7 +14,175 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: \${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: trname: Autonomous DevOps Loop
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  devops-pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: \${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Compile Codebase
+        id: compile
+        run: cargo build --release 2> compiler_error.log
+
+      - name: Remediate Compilation Failure
+        if: failure()
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Analyzing compiler trace inside active workspace..."
+          
+          # Capture the raw compiler logs safely
+          COMPILER_LOGS=\$(cat compiler_error.log)
+
+          # Configure Git Credentials and sync upstream branches safely before changes
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          echo "compiler_error.log" >> .git/info/exclude
+          echo "payload.json" >> .git/info/exclude
+          git pull origin main --rebase
+
+          # Attempt to extract a specific error line
+          ERROR_LINE=\$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
+          
+          if [ -z "\$ERROR_LINE" ]; then
+            echo "No explicit line number found in logs. Sending full file context..."
+            CONTEXT_SNIPPET=\$(cat src/main.rs)
+            SYSTEM_PROMPT="You are an expert Rust engineer. Review the full code and the compiler error trace provided below. Fix the syntax error, missing delimiter, or layout mismatch. Return ONLY the raw valid content for the ENTIRE src/main.rs file, without markdown blocks or formatting wrappers."
+            USER_CONTENT="[COMPILER ERROR LOGS]:\n\({COMPILER_LOGS}\n\n[CURRENT SRC/MAIN.RS]:\n\){CONTEXT_SNIPPET}"
+          else
+            START_LINE=\$(( ERROR_LINE - 20 ))
+            END_LINE=\$(( ERROR_LINE + 20 ))
+            if [ "\$START_LINE" -lt 1 ]; then START_LINE=1; fi
+            echo "Extracting context window around line \$ERROR_LINE..."
+            CONTEXT_SNIPPET=\$(sed -n "\({START_LINE},\){END_LINE}p" src/main.rs)
+            SYSTEM_PROMPT="You are an expert Rust engineer. Fix the syntax error, missing bracket, or block structure. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting."
+            USER_CONTENT="\$CONTEXT_SNIPPET"
+          fi
+
+          export EXPORT_SYSTEM_PROMPT="\$SYSTEM_PROMPT"
+          export EXPORT_USER_CONTENT="\$USER_CONTENT"
+          
+          node -e '
+          const fs = require("fs");
+          const payload = {
+            model: "akai-net",
+            stream: false,
+            messages: [
+              { role: "system", content: process.env.EXPORT_SYSTEM_PROMPT },
+              { role: "user", content: process.env.EXPORT_USER_CONTENT }
+            ]
+          };
+          fs.writeFileSync("payload.json", JSON.stringify(payload));
+          '
+          
+          echo "Sending snippet payload to verified chat endpoint..."
+          RESPONSE=\$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ollama" \
+            -H "User-Agent: GitHubActions-CI" \
+            -d @payload.json)
+
+          FIXED_SNIPPET=\((echo "\)RESPONSE" | node -e '
+          const fs = require("fs");
+          try {
+            const rawInput = fs.readFileSync(0, "utf8");
+            let combinedContent = "";
+
+            if (rawInput.trim().startsWith("data:")) {
+              const lines = rawInput.split("\n");
+              for (let line of lines) {
+                line = line.trim();
+                if (!line || line === "data: [DONE]") continue;
+                if (line.startsWith("data:")) {
+                  try {
+                    const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
+                    const delta = parsedChunk.choices?.[0]?.delta?.content || "";
+                    combinedContent += delta;
+                  } catch (err) {}
+                }
+              }
+            } else {
+              const data = JSON.parse(rawInput);
+              combinedContent = data.choices?.[0]?.message?.content || "";
+            }
+
+            if (!combinedContent) {
+              console.error("Empty content stream received.");
+              process.exit(1);
+            }
+
+            // Strip markdown backtick enclosures if the model injected them
+            let cleaned = combinedContent.trim();
+            if (cleaned.startsWith("```")) {
+              cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
+              cleaned = cleaned.replace(/```$/, "");
+            }
+            
+            process.stdout.write(cleaned.trim() + "\n");
+          } catch (e) {
+            console.error("Failed parsing tokens:", e.message);
+            process.exit(1);
+          }
+          ')
+
+          if [ -z "$FIXED_SNIPPET" ]; then
+            echo "Error: Could not parse response tokens."
+            exit 1
+          fi
+
+          if [ -z "$ERROR_LINE" ]; then
+            echo "$FIXED_SNIPPET" > src/main.rs
+          else
+            sed -e "${START_LINE},${END_LINE}d" src/main.rs > src/main.rs.tmp
+            echo "$FIXED_SNIPPET" > patch.tmp
+            
+            if [ "$START_LINE" -eq 1 ]; then
+              cat patch.tmp src/main.rs.tmp > src/main.rs
+            else
+              head -n $(( START_LINE - 1 )) src/main.rs > final.tmp
+              cat patch.tmp >> final.tmp
+              tail -n +$START_LINE src/main.rs.tmp >> final.tmp
+              mv final.tmp src/main.rs
+            fi
+            rm -f src/main.rs.tmp patch.tmp
+          fi
+
+          echo "CI successfully applied snippet patch!"
+
+          if git diff --quiet src/main.rs; then
+            echo "The AI patch matches the existing code. No new changes to commit."
+            echo "Breaking loop to prevent an infinite cycle."
+            exit 0
+          else
+            echo "Changes detected! Staging and committing to main..."
+            git add src/main.rs
+            git commit -m "fix(ci): autonomously patched context window syntax failure"
+            git push origin main
+          fi
+
+      - name: Manage Homebrew Release Tap
+        if: success()
+        uses: actions/checkout@v4
+        with:
+          repository: 'Akinus21/homebrew-tap'
+          path: 'homebrew-tap'
+          token: ${{ secrets.GITHUB_TOKEN }}
+e
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
