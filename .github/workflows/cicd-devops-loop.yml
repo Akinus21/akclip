@@ -24,13 +24,6 @@ jobs:
         id: compile
         run: cargo build --release 2> compiler_error.log
 
-      - name: Checkout Homebrew Tap Repository
-        uses: actions/checkout@v4
-        with:
-          repository: 'Akinus21/homebrew-tap'
-          path: 'homebrew-tap'
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Remediate Compilation Failure
         if: failure()
         env:
@@ -144,3 +137,10 @@ jobs:
             --body "This PR was generated entirely by your single-job CI pipeline, feeding a 40-line snippet window surrounding your compiler crash line into your akai-net node." \
             --base main \
             --head "$BRANCH_NAME"
+
+      - name: Checkout Homebrew Tap Repository
+        uses: actions/checkout@v4
+        with:
+          repository: 'Akinus21/homebrew-tap'
+          path: 'homebrew-tap'
+          token: ${{ secrets.GITHUB_TOKEN }}
