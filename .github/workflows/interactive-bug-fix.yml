@@ -1,4 +1,4 @@
-name: Interactive Bug Fixer
+name: Autonomous Issue Resolver
 
 on:
   issue_comment:
@@ -6,41 +6,147 @@ on:
 
 jobs:
   fix-issue:
-    # Only run if someone comments with /fix
     if: contains(github.event.comment.body, '/fix')
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Run Interaction Loop via Custom Backend
+      - name: Analyze and Fix Issue
         env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          REPO_SLUG: ${{ github.repository }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          echo "Connecting to distributed llama.cpp architecture..."
-          
-          # Safely construct the JSON payload via Node to avoid shell escaping drops
+          echo "Analyzing issue for autonomous fix..."
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git pull origin main --rebase || true
+
+          LOOP_COUNT=$(git log -n 10 --format="%s" | grep -c "autonomously patched" || true)
+          echo "Current autonomous remediation loop depth: $LOOP_COUNT"
+          if [ "$LOOP_COUNT" -ge 3 ]; then
+            echo "CRITICAL: Maximum iteration depth reached (3 attempts)."
+            echo "Breaking recursive loop execution."
+            exit 1
+          fi
+
+          mkdir -p .git/info
+          echo "payload.json" >> .git/info/exclude
+          echo "response.txt" >> .git/info/exclude
+
           node -e '
           const fs = require("fs");
+          const issueBody = process.env.ISSUE_BODY || "";
+          const commentBody = process.env.COMMENT_BODY || "";
+          const mainRs = fs.readFileSync("src/main.rs", "utf8");
+          let workflowContent = "";
+          try {
+            workflowContent = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8");
+          } catch (e) {}
+
+          const userMessage = `[ISSUE DESCRIPTION]:\n${issueBody}\n\n[COMMENT FROM USER]:\n${commentBody}\n\n[CURRENT src/main.rs]:\n${mainRs}\n\n[CURRENT WORKFLOW]:\n${workflowContent}`;
+
           const payload = {
             model: "akai-net",
             stream: false,
             messages: [
-              { role: "system", content: "You are an autonomous Rust engineer. Apply fixes based on the prompt, modify files locally, and verify compilation using cargo check." },
-              { role: "user", content: process.env.COMMENT_BODY }
+              {
+                role: "system",
+                content: "You are an expert Rust engineer and DevOps engineer. A user has reported an issue. Analyze the issue and fix the appropriate file(s). The issue may relate to Rust code bugs, workflow issues, or feature requests. Return the raw file content for any file you modify WITHOUT markdown blocks or formatting wrappers. If fixing Rust code, return src/main.rs. If fixing workflows, return .github/workflows/cicd-devops-loop.yml."
+              },
+              {
+                role: "user",
+                content: userMessage
+              }
             ]
           };
-          fs.writeFileSync("interactive_payload.json", JSON.stringify(payload));
+          fs.writeFileSync("payload.json", JSON.stringify(payload));
           '
 
-          curl -s -X POST "https://ollama.akinus21.com/v1/chat/completions" \
+          echo "Sending issue to AI for analysis and fix..."
+          CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
-            -d @interactive_payload.json
+            -H "User-Agent: GitHubActions-CI" \
+            -d @payload.json)
+
+          echo "$CurlResponse" > response.txt
+
+          node -e '
+          const fs = require("fs");
+          try {
+            const rawInput = fs.readFileSync("response.txt", "utf8").trim();
+            let combinedContent = "";
+
+            if (rawInput.startsWith("data:")) {
+              const lines = rawInput.split("\n");
+              for (let line of lines) {
+                line = line.trim();
+                if (!line || line === "data: [DONE]") continue;
+                if (line.startsWith("data:")) {
+                  try {
+                    const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
+                    const delta = parsedChunk.choices[0].delta.content || "";
+                    combinedContent += delta;
+                  } catch (err) {}
+                }
+              }
+            } else {
+              const data = JSON.parse(rawInput);
+              combinedContent = data.choices[0].message.content || "";
+            }
+
+            if (!combinedContent) {
+              console.error("Empty content stream received.");
+              process.exit(1);
+            }
+
+            let cleaned = combinedContent.trim();
+            if (cleaned.startsWith("```")) {
+              cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
+              cleaned = cleaned.replace(/```$/, "");
+            }
+
+            // Detect which file to fix
+            if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
+              fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
+              console.log("Workflow file updated!");
+            } else {
+              fs.writeFileSync("src/main.rs", cleaned);
+              console.log("Rust source file updated!");
+            }
+          } catch (e) {
+            console.error("Failed processing response:", e.message);
+            process.exit(1);
+          }
+          '
+
+          if git diff --quiet; then
+            echo "No changes needed. AI determined code is correct."
+            exit 0
+          fi
+
+          echo "Verifying fix compiles..."
+          if cargo check 2>&1; then
+            echo "Build verified! Committing changes..."
+            git add -A
+            git commit -m "fix(issue#$ISSUE_NUMBER): autonomously patched based on user issue"
+            git push origin main
+          else
+            echo "Build failed after fix. Reverting..."
+            git checkout -- .
+            exit 1
+          fi
