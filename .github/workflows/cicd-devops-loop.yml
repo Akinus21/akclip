@@ -81,15 +81,21 @@ jobs:
           echo "Current autonomous remediation loop depth: $LOOP_COUNT"
           if [ "$LOOP_COUNT" -ge 10 ]; then
             echo "CRITICAL: Maximum iteration depth reached (10 attempts). AI failed to solve error."
-            echo "Creating issue to report persistent failure..."
-            gh issue create \
-              --title "DevOps Failed: Unable to fix build after 10 iterations" \
-              --body "The DevOps agent attempted 10 iterations to fix the build on branch '${BRANCH_NAME}' but was unsuccessful. Manual intervention required.
+            LAST_COMMIT=$(git log -1 --pretty=format:'%H - %s')
+            ISSUE_BODY=$(cat <<'EOFBODY'
+The DevOps agent attempted 10 iterations to fix the build but was unsuccessful. Manual intervention required.
 
 Last commit with issue:
-$(git log -1 --pretty=format:'%H - %s')
-
+EOFBODY
+)
+            ISSUE_BODY="${ISSUE_BODY}
+${LAST_COMMIT}
+"
+            ISSUE_BODY="${ISSUE_BODY}
 Please review and provide guidance."
+            gh issue create \
+              --title "DevOps Failed: Unable to fix build after 10 iterations" \
+              --body "${ISSUE_BODY}"
             exit 1
           fi
 
