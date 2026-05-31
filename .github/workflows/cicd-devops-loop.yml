@@ -13,7 +13,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Swapping GITHUB_TOKEN for your custom PAT to allow recursive loop triggers
+          token: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
           persist-credentials: true
 
       - name: Setup Rust Toolchain
@@ -26,24 +27,32 @@ jobs:
       - name: Remediate Compilation Failure
         if: failure()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
         run: |
           echo "Analyzing compiler trace inside active workspace..."
           
-          # Capture the raw compiler logs safely
-          COMPILER_LOGS=$(cat compiler_error.log)
-
           # Configure Git Credentials and sync upstream branches safely before changes
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.email "github-actions[bot]@://github.com"
           echo "compiler_error.log" >> .git/info/exclude
           echo "payload.json" >> .git/info/exclude
           echo "response.txt" >> .git/info/exclude
           git pull origin main --rebase
 
+          # SAFETY GATE: Extract loop occurrences from git log to prevent infinite loops
+          LOOP_COUNT=$(git log -n 10 --format="%s" | grep -c "autonomously patched" || true)
+          echo "Current autonomous remediation loop depth: $LOOP_COUNT"
+          if [ "$LOOP_COUNT" -ge 3 ]; then
+            echo "CRITICAL: Maximum iteration depth reached (3 attempts). AI failed to solve compilation error."
+            echo "Breaking recursive loop execution to prevent resource exhaustion."
+            exit 1
+          fi
+
+          # Capture the raw compiler logs safely
+          COMPILER_LOGS=$(cat compiler_error.log)
+
           # Attempt to extract a specific error line
           ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
-          
           if [ -z "$ERROR_LINE" ]; then
             ERROR_LINE="0"
           fi
@@ -110,14 +119,14 @@ jobs:
                 if (line.startsWith("data:")) {
                   try {
                     const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    const delta = parsedChunk.choices?.[0]?.delta?.content || "";
+                    const delta = parsedChunk.choices[0].delta.content || "";
                     combinedContent += delta;
                   } catch (err) {}
                 }
               }
             } else {
               const data = JSON.parse(rawInput);
-              combinedContent = data.choices?.[0]?.message?.content || "";
+              combinedContent = data.choices[0].message.content || "";
             }
 
             if (!combinedContent) {
@@ -173,4 +182,4 @@ jobs:
         with:
           repository: 'Akinus21/homebrew-tap'
           path: 'homebrew-tap'
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
