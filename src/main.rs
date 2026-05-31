@@ -1,3 +1,5 @@
+use std::env;
+
 fn main() {
     match env::args() {
         [] => {
@@ -18,7 +20,5 @@ fn main() {
             println!("   --help: Show help");
             return;
         }
-    }
-}
     }
 }
