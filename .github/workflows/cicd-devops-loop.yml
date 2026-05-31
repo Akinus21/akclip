@@ -26,34 +26,40 @@ jobs:
       - name: Remediate Compilation Failure
         if: failure()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Analyzing compiler trace inside active workspace..."
           
           # Capture the raw compiler logs safely
-          COMPILER_LOGS=$(cat compiler_error.log)
-          echo "Raw Compiler Output:\n$COMPILER_LOGS"
+          COMPILER_LOGS=\$(cat compiler_error.log)
+
+          # 1. IMMEDIATE FIX: Pull upstream changes first before modifying local files
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@://github.com"
+          echo "compiler_error.log" >> .git/info/exclude
+          echo "payload.json" >> .git/info/exclude
+          git pull origin main --rebase
 
           # Attempt to extract a specific error line
-          ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
+          ERROR_LINE=\$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
           
-          if [ -z "$ERROR_LINE" ]; then
+          if [ -z "\$ERROR_LINE" ]; then
             echo "No explicit line number found in logs. Sending full file context + compiler error trace..."
-            CONTEXT_SNIPPET=$(cat src/main.rs)
+            CONTEXT_SNIPPET=\$(cat src/main.rs)
             SYSTEM_PROMPT="You are an expert Rust engineer. The codebase failed to compile with exit code 101. Review the full code and the compiler error trace provided below. Fix the syntax error, missing delimiter, or layout mismatch. Return ONLY the raw valid content for the ENTIRE src/main.rs file, without markdown blocks or formatting wrappers."
-            USER_CONTENT="[COMPILER ERROR LOGS]:\n$COMPILER_LOGS\n\n[CURRENT SRC/MAIN.RS]:\n$CONTEXT_SNIPPET"
+            USER_CONTENT="[COMPILER ERROR LOGS]:\n\(COMPILER_LOGS\n\n[CURRENT SRC/MAIN.RS]:\n\)CONTEXT_SNIPPET"
           else
-            START_LINE=$(( ERROR_LINE - 20 ))
-            END_LINE=$(( ERROR_LINE + 20 ))
-            if [ "$START_LINE" -lt 1 ]; then START_LINE=1; fi
-            echo "Extracting context window around line $ERROR_LINE (Lines $START_LINE to $END_LINE)..."
-            CONTEXT_SNIPPET=$(sed -n "${START_LINE},${END_LINE}p" src/main.rs)
-            SYSTEM_PROMPT="You are an expert Rust engineer. The following code snippet has an unclosed delimiter syntax error. Fix the layout alignment mismatch or missing bracket. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting."
-            USER_CONTENT="$CONTEXT_SNIPPET"
+            START_LINE=\$(( ERROR_LINE - 20 ))
+            END_LINE=\$(( ERROR_LINE + 20 ))
+            if [ "\$START_LINE" -lt 1 ]; then START_LINE=1; fi
+            echo "Extracting context window around line \$ERROR_LINE (Lines \(START_LINE to\)END_LINE)..."
+            CONTEXT_SNIPPET=\$(sed -n "\({START_LINE},\){END_LINE}p" src/main.rs)
+            SYSTEM_PROMPT="You are an expert Rust engineer. The following code snippet has a syntax compiler error. Fix the layout alignment mismatch, missing bracket, or block structure. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting."
+            USER_CONTENT="\$CONTEXT_SNIPPET"
           fi
 
-          export EXPORT_SYSTEM_PROMPT="$SYSTEM_PROMPT"
-          export EXPORT_USER_CONTENT="$USER_CONTENT"
+          export EXPORT_SYSTEM_PROMPT="\$SYSTEM_PROMPT"
+          export EXPORT_USER_CONTENT="\$USER_CONTENT"
           
           node -e '
           const fs = require("fs");
@@ -69,13 +75,13 @@ jobs:
           '
           
           echo "Sending snippet payload to verified chat endpoint..."
-          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+          RESPONSE=\$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
             -d @payload.json)
 
-          FIXED_SNIPPET=$(echo "$RESPONSE" | node -e '
+          FIXED_SNIPPET=\((echo "\)RESPONSE" | node -e '
           const fs = require("fs");
           try {
             const rawInput = fs.readFileSync(0, "utf8");
@@ -89,14 +95,14 @@ jobs:
                 if (line.startsWith("data:")) {
                   try {
                     const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    const delta = parsedChunk.choices[0].delta.content || "";
+                    const delta = parsedChunk.choices?.[0]?.delta?.content || "";
                     combinedContent += delta;
                   } catch (err) {}
                 }
               }
             } else {
               const data = JSON.parse(rawInput);
-              combinedContent = data.choices[0].message.content || "";
+              combinedContent = data.choices?.[0]?.message?.content || "";
             }
 
             if (!combinedContent) {
@@ -104,7 +110,16 @@ jobs:
               process.exit(1);
             }
 
-            process.stdout.write(combinedContent);
+            // 2. IMMEDIATE FIX: Strip out stubborn markdown backtick block enclosures completely
+            let cleaned = combinedContent.trim();
+            if (cleaned.startsWith("```")) {
+              // Strip leading block declaration (e.g. ```rust or ```nohighlight)
+              cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
+              // Strip trailing block declaration
+              cleaned = cleaned.replace(/```$/, "");
+            }
+            
+            process.stdout.write(cleaned.trim() + "\n");
           } catch (e) {
             console.error("Failed parsing tokens:", e.message);
             process.exit(1);
@@ -116,16 +131,12 @@ jobs:
             exit 1
           fi
 
-          # If no error line was found, replace the whole file. 
-          # If an error line was found, replace the local context window using temporary files.
           if [ -z "$ERROR_LINE" ]; then
             echo "$FIXED_SNIPPET" > src/main.rs
           else
-            # Reconstruct the file safely with the patched window snippet
             sed -e "${START_LINE},${END_LINE}d" src/main.rs > src/main.rs.tmp
             echo "$FIXED_SNIPPET" > patch.tmp
             
-            # Insert the patch back into the target window location
             if [ "$START_LINE" -eq 1 ]; then
               cat patch.tmp src/main.rs.tmp > src/main.rs
             else
@@ -139,15 +150,6 @@ jobs:
 
           echo "CI successfully applied snippet patch!"
 
-          # Configure Git Credentials
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          echo "compiler_error.log" >> .git/info/exclude
-          echo "payload.json" >> .git/info/exclude
-
-          git pull origin main --rebase
-
           if git diff --quiet src/main.rs; then
             echo "The AI patch matches the existing code. No new changes to commit."
             echo "Breaking loop to prevent an infinite cycle."
@@ -158,7 +160,6 @@ jobs:
             git commit -m "fix(ci): autonomously patched context window syntax failure"
             git push origin main
           fi
-
 
       - name: Manage Homebrew Release Tap
         if: success()
