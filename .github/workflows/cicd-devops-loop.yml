@@ -40,7 +40,7 @@ jobs:
           if [ ! -d ".git" ]; then
             echo "Initializing missing fallback repository configuration..."
             git init
-            git remote add origin "https://x-access-token:\({GH_TOKEN}@://github.com\){REPO_SLUG}.git"
+            git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO_SLUG}.git"
             git fetch origin main
             git checkout main
           fi
