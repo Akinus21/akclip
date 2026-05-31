@@ -24,6 +24,13 @@ jobs:
         id: compile
         run: cargo build --release 2> compiler_error.log
 
+      - name: Checkout Homebrew Tap Repository
+        uses: actions/checkout@v4
+        with:
+          repository: 'Akinus21/homebrew-tap'
+          path: 'homebrew-tap'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Remediate Compilation Failure
         if: failure()
         env:
