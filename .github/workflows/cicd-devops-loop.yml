@@ -33,9 +33,9 @@ jobs:
       - name: Package Release Artifacts
         if: success()
         run: |
-          chmod +x akclip
+          chmod +x target/release/akclip
           mkdir -p release
-          tar czf release/akclip.tar.gz akclip
+          tar czf release/akclip.tar.gz -C target/release akclip
 
       - name: Generate SHA256
         id: sha
@@ -141,6 +141,7 @@ jobs:
           echo "payload.json" >> .git/info/exclude
           echo "response.txt" >> .git/info/exclude
 
+          git reset --hard HEAD
           git pull origin main --rebase
 
           LOOP_COUNT=$(git log -n 10 --format="%s" | grep -c "autonomously patched" || true)
