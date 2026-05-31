@@ -14,12 +14,13 @@ permissions:
 jobs:
   sync-release:
     runs-on: ubuntu-latest
-    if: (github.event_name != 'pull_request' && github.ref_name == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_TOKEN }}
+          ref: main
           fetch-depth: 0
 
       - name: Setup Rust Toolchain
@@ -45,8 +46,17 @@ jobs:
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           VERSION=${LATEST_TAG#v}
           IFS='.' read -r major minor patch <<< "$VERSION"
-          patch=$((patch + 1))
-          NEW_TAG="v${major}.${minor}.${patch}"
+
+          # Find next available tag
+          found=0
+          while [ $found -eq 0 ]; do
+            patch=$((patch + 1))
+            NEW_TAG="v${major}.${minor}.${patch}"
+            if ! git tag | grep -q "^${NEW_TAG}$"; then
+              found=1
+            fi
+          done
+
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
           echo "previous_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
 
