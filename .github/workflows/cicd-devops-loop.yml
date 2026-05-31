@@ -23,7 +23,7 @@ jobs:
         id: compile
         run: cargo build --release 2> compiler_error.log
 
-            - name: Remediate Compilation Failure
+      - name: Remediate Compilation Failure
         if: failure()
         env:
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
