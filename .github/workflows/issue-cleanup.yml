@@ -28,9 +28,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_NUMBER: ${{ github.event.pull_request.body }}
         run: |
           echo "PR was merged. Performing cleanup..."
 
+          # Extract issue number from PR body
           ISSUE_NUM=$(echo "$PR_BODY" | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
 
           if [ -z "$ISSUE_NUM" ]; then
@@ -38,10 +40,13 @@ jobs:
           else
             echo "Found issue #$ISSUE_NUM in PR body"
 
+            # Get the branch for this issue
             BRANCH_NAME="issue-${ISSUE_NUM}"
 
+            # Get commit history for this PR
             COMMITS=$(git log origin/main..origin/$BRANCH_NAME --oneline 2>/dev/null || echo "No commits to summarize")
 
+            # AI summarize the commits
             cat > summarize.js << 'ENDSCRIPT'
             const fs = require("fs");
             const commits = fs.readFileSync("commits.txt", "utf8");
@@ -52,7 +57,7 @@ jobs:
               messages: [
                 {
                   role: "system",
-                  content: "You are an expert developer relations assistant. Summarize the following commit history in a concise, friendly message that explains what fixes were made. Keep it under 3 sentences. Do not use markdown."
+                  content: "You are an expert developer Relations assistant. Summarize the following commit history in a concise, friendly message that explains what fixes were made. Keep it under 3 sentences. Do not use markdown."
                 },
                 {
                   role: "user",
@@ -78,20 +83,21 @@ jobs:
 
             echo "Summary: $SUMMARY"
 
-            gh issue comment $ISSUE_NUM --body "## Fix Merged! []
+            COMMENT_BODY=$(printf '%s\n%s\n\n%s\n%s\n' \
+              "## Fix Merged!" \
+              "PR #${PR_NUMBER} has been merged." \
+              "**Summary of changes:**" \
+              "${SUMMARY}")
+            COMMENT_BODY="${COMMENT_BODY}"$'\n'"Thank you for reporting this issue!"
+            gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
 
-PR #$PR_NUMBER has been merged.
-
-**Summary of changes:**
-$SUMMARY
-
-Thank you for reporting this issue!"
-
+            # Close the issue
             gh issue close $ISSUE_NUM --comment "Issue resolved via PR #$PR_NUMBER"
 
             echo "Issue #$ISSUE_NUM closed and commented."
           fi
 
+          # Delete the issue branch
           BRANCH_NAME=$(echo "$PR_BODY" | grep -oE 'issue-[0-9]+' | head -1 || echo "")
           if [ -n "$BRANCH_NAME" ]; then
             echo "Deleting branch: $BRANCH_NAME"
@@ -107,6 +113,7 @@ Thank you for reporting this issue!"
         run: |
           echo "PR was closed without merge. Performing cleanup..."
 
+          # Extract issue number from PR body
           ISSUE_NUM=$(echo "$PR_BODY" | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
 
           if [ -z "$ISSUE_NUM" ]; then
@@ -114,6 +121,7 @@ Thank you for reporting this issue!"
           else
             echo "Found issue #$ISSUE_NUM in PR body"
 
+            # Comment on the issue
             gh issue comment $ISSUE_NUM --body "## PR Closed Without Merge
 
 PR #$PR_NUMBER was closed without being merged.
@@ -122,9 +130,11 @@ The work on this issue is paused. If you wish to continue, please open a new /fi
 
 Thank you for your patience."
 
+            # Close the issue (marked as closed, not resolved)
             gh issue close $ISSUE_NUM --comment "Work paused - PR closed without merge."
           fi
 
+          # Delete the issue branch
           BRANCH_NAME=$(echo "$PR_BODY" | grep -oE 'issue-[0-9]+' | head -1 || echo "")
           if [ -n "$BRANCH_NAME" ]; then
             echo "Deleting branch: $BRANCH_NAME"

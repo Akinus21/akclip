@@ -42,6 +42,7 @@ jobs:
           echo "Build succeeded! Creating PR to main..."
           BRANCH_NAME=$(git branch --show-current)
 
+          # Check if PR already exists
           EXISTING_PR=$(gh pr list --head $BRANCH_NAME --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
 
           if [ -n "$EXISTING_PR" ]; then
@@ -81,14 +82,14 @@ jobs:
           if [ "$LOOP_COUNT" -ge 10 ]; then
             echo "CRITICAL: Maximum iteration depth reached (10 attempts). AI failed to solve error."
             LAST_COMMIT=$(git log -1 --pretty=format:'%H - %s')
+            ISSUE_BODY=$(printf '%s\n%s\n\n%s\n%s\n' \
+              "The DevOps agent attempted 10 iterations to fix the build but was unsuccessful. Manual intervention required." \
+              "Last commit with issue:" \
+              "${LAST_COMMIT}" \
+              "Please review and provide guidance.")
             gh issue create \
               --title "DevOps Failed: Unable to fix build after 10 iterations" \
-              --body "The DevOps agent attempted 10 iterations to fix the build on branch '${BRANCH_NAME}' but was unsuccessful. Manual intervention required.
-
-Last commit with issue:
-${LAST_COMMIT}
-
-Please review and provide guidance."
+              --body "${ISSUE_BODY}"
             exit 1
           fi
 
@@ -204,10 +205,12 @@ Please review and provide guidance."
         if: github.event_name == 'pull_request_review_comment'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           PR_NUM=${{ github.event.pull_request.number }}
           BRANCH_NAME=$(git branch --show-current)
 
           echo "Responding to PR comment on #$PR_NUM..."
 
+          # Post response as PR comment
           gh pr comment $PR_NUM --body "Agent acknowledged your request on DevOps branch '${BRANCH_NAME}'. Work is being processed."
