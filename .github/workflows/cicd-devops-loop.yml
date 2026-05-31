@@ -15,7 +15,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
           persist-credentials: true
           fetch-depth: 0
 
@@ -29,7 +29,7 @@ jobs:
       - name: Check for Compilation Errors
         if: failure()
         env:
-          GH_TOKEN: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPO_SLUG: ${{ github.repository }}
         run: |
           echo "Analyzing compiler trace inside active workspace..."
@@ -196,7 +196,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
           persist-credentials: true
           fetch-depth: 0
 
@@ -237,7 +237,7 @@ jobs:
           files: release/akclip.tar.gz
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Create Homebrew Formula
         run: |
@@ -267,7 +267,7 @@ jobs:
         with:
           repository: Akinus21/homebrew-tap
           path: homebrew-tap
-          token: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
           persist-credentials: true
 
       - name: Commit Homebrew Formula
