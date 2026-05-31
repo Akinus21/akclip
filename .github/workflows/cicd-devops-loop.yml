@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          token: \${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
       - name: Setup Rust Toolchain
@@ -26,12 +26,12 @@ jobs:
       - name: Remediate Compilation Failure
         if: failure()
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Analyzing compiler trace inside active workspace..."
           
           # Capture the raw compiler logs safely
-          COMPILER_LOGS=\$(cat compiler_error.log)
+          COMPILER_LOGS=$(cat compiler_error.log)
 
           # Configure Git Credentials and sync upstream branches safely before changes
           git config --global user.name "github-actions[bot]"
@@ -41,25 +41,25 @@ jobs:
           git pull origin main --rebase
 
           # Attempt to extract a specific error line
-          ERROR_LINE=\$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
+          ERROR_LINE=$(grep -oE "src/main.rs:[0-9]+" compiler_error.log | head -n 1 | cut -d':' -f2)
           
-          if [ -z "\$ERROR_LINE" ]; then
+          if [ -z "$ERROR_LINE" ]; then
             echo "No explicit line number found in logs. Sending full file context..."
-            CONTEXT_SNIPPET=\$(cat src/main.rs)
+            CONTEXT_SNIPPET=$(cat src/main.rs)
             SYSTEM_PROMPT="You are an expert Rust engineer. Review the full code and the compiler error trace provided below. Fix the syntax error, missing delimiter, or layout mismatch. Return ONLY the raw valid content for the ENTIRE src/main.rs file, without markdown blocks or formatting wrappers."
-            USER_CONTENT="[COMPILER ERROR LOGS]:\n\({COMPILER_LOGS}\n\n[CURRENT SRC/MAIN.RS]:\n\){CONTEXT_SNIPPET}"
+            USER_CONTENT="[COMPILER ERROR LOGS]:\n({COMPILER_LOGS}\n\n[CURRENT SRC/MAIN.RS]:\n){CONTEXT_SNIPPET}"
           else
-            START_LINE=\$(( ERROR_LINE - 20 ))
-            END_LINE=\$(( ERROR_LINE + 20 ))
-            if [ "\$START_LINE" -lt 1 ]; then START_LINE=1; fi
-            echo "Extracting context window around line \$ERROR_LINE..."
-            CONTEXT_SNIPPET=\$(sed -n "\({START_LINE},\){END_LINE}p" src/main.rs)
+            START_LINE=$(( ERROR_LINE - 20 ))
+            END_LINE=$(( ERROR_LINE + 20 ))
+            if [ "$START_LINE" -lt 1 ]; then START_LINE=1; fi
+            echo "Extracting context window around line $ERROR_LINE..."
+            CONTEXT_SNIPPET=$(sed -n "({START_LINE},){END_LINE}p" src/main.rs)
             SYSTEM_PROMPT="You are an expert Rust engineer. Fix the syntax error, missing bracket, or block structure. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting."
-            USER_CONTENT="\$CONTEXT_SNIPPET"
+            USER_CONTENT="$CONTEXT_SNIPPET"
           fi
 
-          export EXPORT_SYSTEM_PROMPT="\$SYSTEM_PROMPT"
-          export EXPORT_USER_CONTENT="\$USER_CONTENT"
+          export EXPORT_SYSTEM_PROMPT="$SYSTEM_PROMPT"
+          export EXPORT_USER_CONTENT="$USER_CONTENT"
           
           node -e '
           const fs = require("fs");
@@ -75,13 +75,13 @@ jobs:
           '
           
           echo "Sending snippet payload to verified chat endpoint..."
-          RESPONSE=\$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
             -d @payload.json)
 
-          FIXED_SNIPPET=\((echo "\)RESPONSE" | node -e '
+          FIXED_SNIPPET=((echo ")RESPONSE" | node -e '
           const fs = require("fs");
           try {
             const rawInput = fs.readFileSync(0, "utf8");
@@ -95,14 +95,14 @@ jobs:
                 if (line.startsWith("data:")) {
                   try {
                     const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    const delta = parsedChunk.choices?.[0]?.delta?.content || "";
+                    const delta = parsedChunk.choices[0].delta.content || "";
                     combinedContent += delta;
                   } catch (err) {}
                 }
               }
             } else {
               const data = JSON.parse(rawInput);
-              combinedContent = data.choices?.[0]?.message?.content || "";
+              combinedContent = data.choices[0].message.content || "";
             }
 
             if (!combinedContent) {
