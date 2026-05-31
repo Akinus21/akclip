@@ -53,7 +53,7 @@ jobs:
             END_LINE=$(( ERROR_LINE + 20 ))
             if [ "$START_LINE" -lt 1 ]; then START_LINE=1; fi
             echo "Extracting context window around line $ERROR_LINE..."
-            CONTEXT_SNIPPET=$(sed -n "({START_LINE},){END_LINE}p" src/main.rs)
+            CONTEXT_SNIPPET=$(sed -n "\({START_LINE},\){END_LINE}p" src/main.rs)
             SYSTEM_PROMPT="You are an expert Rust engineer. Fix the syntax error, missing bracket, or block structure. Return ONLY the raw valid code snippet to replace this section, without markdown wraps or formatting."
             USER_CONTENT="$CONTEXT_SNIPPET"
           fi
