@@ -124,7 +124,8 @@ jobs:
             version "VERSION_PLACEHOLDER"
 
             def install
-              tar xzf "akclip.tar.gz"
+              # The tarball extracts to akclip/ directory
+              # The binary is at akclip/target/release/akclip
               bin.install "akclip/target/release/akclip"
             end
 
