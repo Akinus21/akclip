@@ -16,6 +16,11 @@ permissions:
 jobs:
   resolve-issue:
     runs-on: ubuntu-latest
+    outputs:
+      issue_num: ${{ steps.issue_info.outputs.ISSUE_NUM }}
+      pr_num: ${{ steps.issue_info.outputs.PR_NUM }}
+      branch_name: ${{ steps.branch_setup.outputs.BRANCH_NAME }}
+      build_success: ${{ steps.build_verify.outputs.BUILD_SUCCESS }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -45,7 +50,6 @@ jobs:
             echo "ISSUE_NUM=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
             echo "Triggered by PR comment"
-            # Extract issue number from PR body
             ISSUE_NUM=$(echo "$PR_BODY" | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
             if [ -z "$ISSUE_NUM" ]; then
               echo "No issue number found in PR body"
@@ -66,10 +70,10 @@ jobs:
 
           ISSUE_NUM=${{ steps.issue_info.outputs.ISSUE_NUM }}
           BRANCH_NAME="issue-${ISSUE_NUM}"
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
           echo "Setting up branch: $BRANCH_NAME"
 
-          # Check if branch exists
           if git ls-remote --heads origin $BRANCH_NAME 2>/dev/null | grep -q "$BRANCH_NAME"; then
             echo "Branch exists, checking out..."
             git fetch origin $BRANCH_NAME
@@ -252,14 +256,14 @@ jobs:
           CURRENT_BRANCH=$(git branch --show-current)
           git push origin $CURRENT_BRANCH
 
-      - name: Build Iteration Loop
-        if: env.NO_CHANGES != 'true'
+      - name: Build Verification
+        id: build_verify
         run: |
           echo "Running build to verify..."
           BRANCH_NAME=$(git branch --show-current)
           echo "Current branch: $BRANCH_NAME"
 
-          if cargo build --release 2>&1 | tee compiler_error.log; then
+          if cargo build --release 2>&1; then
             echo "Build succeeded on $BRANCH_NAME!"
             echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
           else
@@ -267,12 +271,21 @@ jobs:
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create PR on Success
-        if: env.BUILD_SUCCESS == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          ISSUE_NUM: ${{ steps.issue_info.outputs.ISSUE_NUM }}
-          PR_NUM: ${{ steps.issue_info.outputs.PR_NUM }}
+  create-pr:
+    needs: resolve-issue
+    if: needs.resolve-issue.outputs.build_success == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      ISSUE_NUM: ${{ needs.resolve-issue.outputs.issue_num }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Create PR to Devops
         run: |
           BRANCH_NAME=$(git branch --show-current)
 
@@ -288,16 +301,24 @@ jobs:
             --title "Fix issue #${ISSUE_NUM}" \
             --body "${PR_BODY}"
 
+  respond-to-comment:
+    needs: resolve-issue
+    if: github.event_name == 'pull_request_review_comment'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      PR_NUM: ${{ needs.resolve-issue.outputs.pr_num }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
       - name: Respond to PR Comment
-        if: github.event_name == 'pull_request_review_comment'
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          PR_NUM: ${{ steps.issue_info.outputs.PR_NUM }}
-          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           echo "Responding to PR comment..."
 
           BRANCH_NAME=$(git branch --show-current)
 
-          # Post response as PR comment
           gh pr comment $PR_NUM --body "Agent acknowledged your request on branch ${BRANCH_NAME}. Work is being processed."
