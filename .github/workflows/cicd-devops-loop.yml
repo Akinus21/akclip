@@ -72,7 +72,7 @@ jobs:
           
           echo "Sending snippet payload to verified chat endpoint with redirect forwarding..."
           # FIXED: Added -L, --post301, --post302, --post303 flags to pass payload through ollama-queue 307 redirects safely
-          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1" \
+          RESPONSE=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
@@ -85,14 +85,18 @@ jobs:
           const fs = require("fs");
           try {
             const data = JSON.parse(fs.readFileSync(0, "utf8"));
-            // Handles native Ollama message content, raw response text, or OpenAI format variants
-            const content = (data.message && data.message.content) || 
-                            data.response || 
-                            (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || 
-                            "";
+            
+            // Safely grab standard OpenAI/llama.cpp tokens from choice slots
+            const content = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+            
+            if (!content) {
+              console.error("Empty content received or token mismatch.");
+              process.exit(1);
+            }
+            
             process.stdout.write(content);
           } catch (e) {
-            console.error("JSON parsing step failed:", e.message);
+            console.error("Failed parsing valid engine tokens:", e.message);
             process.exit(1);
           }
           ')
