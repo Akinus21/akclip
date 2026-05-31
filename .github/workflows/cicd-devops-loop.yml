@@ -115,15 +115,26 @@ jobs:
 
           # Configure Git Credentials
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Ignore temporary files locally without altering tracked files
+          echo "compiler_error.log" >> .git/info/exclude
+          echo "payload.json" >> .git/info/exclude
+
           # Pull latest upstream to prevent conflict loops before forcing changes
           git pull origin main --rebase
 
-          # Track, commit, and push directly to main
-          git add src/main.rs
-          git commit -m "fix(ci): autonomously patched context window syntax failure [skip ci]"
-          git push origin main
+          # Check if the AI patch actually altered the file contents
+          if git diff --quiet src/main.rs; then
+            echo "The AI patch matches the existing code. No new changes to commit."
+            echo "Breaking loop to prevent an infinite cycle."
+            exit 0
+          else
+            echo "Changes detected! Staging and committing to main..."
+            git add src/main.rs
+            git commit -m "fix(ci): autonomously patched context window syntax failure"
+            git push origin main
+          fi
 
       - name: Manage Homebrew Release Tap
         if: success()
