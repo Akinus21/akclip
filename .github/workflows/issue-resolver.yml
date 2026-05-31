@@ -301,6 +301,17 @@ jobs:
             --title "Fix issue #${ISSUE_NUM}" \
             --body "${PR_BODY}"
 
+      - name: Post PR Link to Issue
+        run: |
+          PR_URL=$(gh pr list --head $BRANCH_NAME --state open --json url --jq '.[0].url' 2>/dev/null || echo "")
+          if [ -n "$PR_URL" ]; then
+            gh issue comment $ISSUE_NUM --body "## Fix In Progress
+
+Agent has created a PR to address this issue: $PR_URL
+
+The build has passed and the fix is ready for review. Merge the PR to devops to trigger integration to main."
+          fi
+
   respond-to-comment:
     needs: resolve-issue
     if: github.event_name == 'pull_request_review_comment'
