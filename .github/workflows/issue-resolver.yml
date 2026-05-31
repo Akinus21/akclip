@@ -275,15 +275,15 @@ jobs:
 
           echo "Build succeeded! Creating PR to main..."
 
+          PR_BODY=$(printf '%s\n%s\n%s\n' \
+            "Closes #${ISSUE_NUM}" \
+            "This PR contains the autonomous fix for the reported issue." \
+            "The agent has verified that the build passes. Please review and merge.")
           gh pr create \
             --base main \
             --head $BRANCH_NAME \
             --title "Fix issue #${ISSUE_NUM}" \
-            --body "Closes #${ISSUE_NUM}
-
-This PR contains the autonomous fix for the reported issue.
-
-The agent has verified that the build passes. Please review and merge."
+            --body "${PR_BODY}"
 
       - name: Respond to PR Comment
         if: github.event_name == 'pull_request_review_comment'

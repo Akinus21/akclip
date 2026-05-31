@@ -122,13 +122,12 @@ jobs:
             echo "Found issue #$ISSUE_NUM in PR body"
 
             # Comment on the issue
-            gh issue comment $ISSUE_NUM --body "## PR Closed Without Merge
-
-PR #$PR_NUMBER was closed without being merged.
-
-The work on this issue is paused. If you wish to continue, please open a new /fix request and the agent will resume work.
-
-Thank you for your patience."
+            CLOSED_BODY=$(printf '%s\n%s\n\n%s\n%s\n' \
+              "## PR Closed Without Merge" \
+              "PR #${PR_NUMBER} was closed without being merged." \
+              "The work on this issue is paused. If you wish to continue, please open a new /fix request and the agent will resume work." \
+              "Thank you for your patience.")
+            gh issue comment $ISSUE_NUM --body "${CLOSED_BODY}"
 
             # Close the issue (marked as closed, not resolved)
             gh issue close $ISSUE_NUM --comment "Work paused - PR closed without merge."
