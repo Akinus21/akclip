@@ -1,6 +1,8 @@
 name: Autonomous Issue Resolver
 
 on:
+  issues:
+    types: [opened]
   issue_comment:
     types: [created]
 
@@ -10,7 +12,7 @@ permissions:
 
 jobs:
   fix-issue:
-    if: contains(github.event.comment.body, '/fix')
+    if: contains(github.event.issue.body, '/fix') || contains(github.event.comment.body, '/fix')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
