@@ -61,7 +61,7 @@ jobs:
             workflowContent = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8");
           } catch (e) {}
 
-          const userMessage = `[ISSUE DESCRIPTION]:\n${issueBody}\n\n[COMMENT FROM USER]:\n${commentBody}\n\n[CURRENT src/main.rs]:\n${mainRs}\n\n[CURRENT WORKFLOW]:\n${workflowContent}`;
+          const userMessage = `[ISSUE DESCRIPTION]:\n${issueBody}\n\n[COMMENT FROM USER]:\n${commentBody}\n\n[CURRENT src/main.rs]:\n${mainRs}\n\n[CURRENT WORKFLOW (.github/workflows/cicd-devops-loop.yml)]:\n${workflowContent}`;
 
           const payload = {
             model: "akai-net",
@@ -69,7 +69,21 @@ jobs:
             messages: [
               {
                 role: "system",
-                content: "You are an expert Rust engineer and DevOps engineer. A user has reported an issue. Analyze the issue and fix the appropriate file(s). The issue may relate to Rust code bugs, workflow issues, or feature requests. Return the raw file content for any file you modify WITHOUT markdown blocks or formatting wrappers. If fixing Rust code, return src/main.rs. If fixing workflows, return .github/workflows/cicd-devops-loop.yml."
+                content: `You are an expert Rust engineer and DevOps engineer.
+
+DIAGNOSE the issue first, then only fix the appropriate file:
+
+- If the issue is about: compilation error, runtime bug, panic, wrong output → fix src/main.rs
+- If the issue is about: CI/CD, Homebrew, GitHub Actions, releases, checksum, workflow → fix .github/workflows/cicd-devops-loop.yml
+
+IMPORTANT RULES:
+1. Only return code for the file that NEEDS fixing, not both
+2. If fixing Rust code: return raw Rust code starting with "use std::env;" or "fn main"
+3. If fixing workflow: return raw YAML starting with "name:" and containing "jobs:"
+4. Do NOT add markdown code blocks (no \`\`\`)
+5. Make sure Rust code compiles with 'cargo check' before returning
+
+Analyze the user's issue and respond with ONLY the raw file content that fixes it.`
               },
               {
                 role: "user",
@@ -80,7 +94,7 @@ jobs:
           fs.writeFileSync("payload.json", JSON.stringify(payload));
           '
 
-          echo "Sending issue to AI for analysis and fix..."
+          echo "Sending issue to AI for diagnosis and fix..."
           CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
@@ -124,13 +138,19 @@ jobs:
               cleaned = cleaned.replace(/```$/, "");
             }
 
-            // Detect which file to fix
+            // Detect which file to fix based on content
             if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
+              console.log("DETECTED: Workflow file needs fixing");
               fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
-              console.log("Workflow file updated!");
-            } else {
+              fs.writeFileSync("detected_file.txt", "workflow");
+            } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
+              console.log("DETECTED: Rust source file needs fixing");
               fs.writeFileSync("src/main.rs", cleaned);
-              console.log("Rust source file updated!");
+              fs.writeFileSync("detected_file.txt", "rust");
+            } else {
+              console.log("DETECTED: Defaulting to Rust source");
+              fs.writeFileSync("src/main.rs", cleaned);
+              fs.writeFileSync("detected_file.txt", "rust");
             }
           } catch (e) {
             console.error("Failed processing response:", e.message);
@@ -138,19 +158,28 @@ jobs:
           }
           '
 
+          DETECTED_FILE=$(cat detected_file.txt)
+
           if git diff --quiet; then
             echo "No changes needed. AI determined code is correct."
             exit 0
           fi
 
-          echo "Verifying fix compiles..."
-          if cargo check 2>&1; then
-            echo "Build verified! Committing changes..."
-            git add -A
-            git commit -m "fix(issue#$ISSUE_NUMBER): autonomously patched based on user issue"
-            git push origin main
+          if [ "$DETECTED_FILE" = "rust" ]; then
+            echo "Verifying Rust fix compiles..."
+            if cargo check 2>&1; then
+              echo "Build verified! Committing changes..."
+              git add -A
+              git commit -m "fix(issue#$ISSUE_NUMBER): autonomously patched based on user issue"
+              git push origin main
+            else
+              echo "Build failed. Will let the build loop handle retries..."
+              git checkout -- .
+              exit 1
+            fi
           else
-            echo "Build failed after fix. Reverting..."
-            git checkout -- .
-            exit 1
+            echo "Workflow fix detected. Committing and pushing..."
+            git add -A
+            git commit -m "fix(issue#$ISSUE_NUMBER): autonomously patched workflow based on user issue"
+            git push origin main
           fi
