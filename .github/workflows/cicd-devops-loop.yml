@@ -15,7 +15,7 @@ jobs:
         with:
           token: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
           persist-credentials: true
-          fetch-depth: 0 # Forces pulling full branch history to let git pull run safely
+          fetch-depth: 0
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -28,18 +28,19 @@ jobs:
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.ITERATIVE_LOOP_TOKEN }}
+          REPO_SLUG: ${{ github.repository }}
         run: |
           echo "Analyzing compiler trace inside active workspace..."
           
           # Configure Git Credentials and sync upstream branches safely before changes
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # Safely ensure git tracking metadata is active in workspace before execution
           if [ ! -d ".git" ]; then
             echo "Initializing missing fallback repository configuration..."
             git init
-            git remote add origin "https://x-access-token:\({{ secrets.ITERATIVE_LOOP_TOKEN }}@://github.com\){{ github.repository }}.git"
+            git remote add origin "https://x-access-token:\({GH_TOKEN}@://github.com\){REPO_SLUG}.git"
             git fetch origin main
             git checkout main
           fi
