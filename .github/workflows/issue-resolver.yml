@@ -360,7 +360,8 @@ jobs:
             --base devops \
             --head $BRANCH_NAME \
             --title "Fix issue #${ISSUE_NUM}" \
-            --body "${PR_BODY}"
+            --body "${PR_BODY}" \
+            --label "automerge-ready"
 
       - name: Post PR Link to Issue
         run: |

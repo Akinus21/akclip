@@ -63,7 +63,8 @@ jobs:
               --base main \
               --head $BRANCH_NAME \
               --title "DevOps: update from ${BRANCH_NAME}" \
-              --body "DevOps loop completed successfully. Build verified. Ready to merge."
+              --body "DevOps loop completed successfully. Build verified. Ready to merge." \
+              --label "automerge-ready"
           fi
 
       - name: Remediate Any Failure
