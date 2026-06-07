@@ -1,4 +1,10 @@
-use std::env;
+Looking at the build logs, I can see:
+
+1. **The build actually SUCCEEDED** - it says "Finished `release` profile [optimized] target(s) in 15.32s"
+2. **There's only a WARNING** about an unused import: `use std::env;` on line 1
+
+This is not a build failure, but a warning about dead code. The fix is to remove the unused `use std::env;` import.
+
 use std::io::{self, Read};
 
 fn main() {
