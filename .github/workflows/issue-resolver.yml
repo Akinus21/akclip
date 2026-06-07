@@ -7,6 +7,9 @@ on:
     types: [created, edited]
   pull_request_review_comment:
     types: [created, edited]
+  push:
+    branches:
+      - 'issue-*'
 
 permissions:
   contents: write
