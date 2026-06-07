@@ -1,35 +1,22 @@
-Looking at the build error, the `src/main.rs` file contains invalid Rust code - it appears to have text/descriptions instead of actual Rust code. The compiler errors show:
-- `prefix 'There' is unknown` - indicating non-code text at line 4
-- `unknown start of token` - grave accent characters (`) being interpreted as code
-- `expected one of '!' or '::', found 'at'` - invalid Rust syntax at line 1
-
-The actual `src/main.rs` file content shown in the prompt is the description text, not valid Rust code. The correct Rust code should be:
-
-use std::io::{self, Read};
+use std::env;
 
 fn main() {
-    let mut input = String::new();
-    
-    // Read all stdin
-    if let Err(e) = io::stdin().read_to_string(&mut input) {
-        eprintln!("Error reading stdin: {}", e);
-        std::process::exit(1);
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() == 1 {
+        println!("Usage: $0 [-s|--stream] [-c|--clipboard-only] [-h|--help]");
+        println!("   akclip captures stdin to the clipboard.  With --stream (-s), accumulates all input then copies on Ctrl+C.");
+        println!("   With --clipboard-only (-c), enters interactive mode for manual paste+copy.");
+        println!("   Use -s to stream output to a tmp file, then copy the tmp file to the clipboard when the command is finished.");
+        println!("   --version: Show version");
+        println!("   --help: Show help");
+        return;
     }
-    
-    // Trim the input
-    let text = input.trim();
-    
-    // Copy to clipboard using arboard
-    match arboard::Clipboard::new() {
-        Ok(mut clipboard) => {
-            if let Err(e) = clipboard.set_text(text) {
-                eprintln!("Error setting clipboard: {}", e);
-                std::process::exit(1);
-            }
-        }
-        Err(e) => {
-            eprintln!("Error accessing clipboard: {}", e);
-            std::process::exit(1);
-        }
-    }
+
+    println!("Usage: $0 [-s|--stream] [-c|--clipboard-only] [-h|--help]");
+    println!("   akclip captures stdin to the clipboard.  With --stream (-s), accumulates all input then copies on Ctrl+C.");
+    println!("   With --clipboard-only (-c), enters interactive mode for manual paste+copy.");
+    println!("   Use -s to stream output to a tmp file, then copy the tmp file to the clipboard when the command is finished.");
+    println!("   --version: Show version");
+    println!("   --help: Show help");
 }
