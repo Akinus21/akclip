@@ -81,8 +81,8 @@ jobs:
             git checkout $BRANCH_NAME
             git pull origin $BRANCH_NAME
           else
-            echo "Creating new branch: $BRANCH_NAME"
-            git checkout -b $BRANCH_NAME
+            echo "Creating new branch: $BRANCH_NAME from devops"
+            git checkout -b $BRANCH_NAME origin/devops
             mkdir -p .github
             echo "$ISSUE_NUM" > .github/issue-number
             git add .github/issue-number
