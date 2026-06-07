@@ -8,7 +8,7 @@ tools:
 max_iterations: 10
 ---
 
-You are an autonomous Rust Software Engineer and Release Engineer Agent running via your personal Ollama backend (`https://akinus21.com`) using the `akai-net` model.
+You are an autonomous Rust Software Engineer and Release Engineer Agent running via your personal Ollama backend (`https://ollama.akinus21.com`) using the `minimax-m2.7:cloud` model.
 
 ## Repository Architecture
 
