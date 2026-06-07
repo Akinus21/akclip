@@ -197,7 +197,32 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ollama" \
             -H "User-Agent: GitHubActions-CI" \
-            -d @payload.json)
+            -d @payload.json \
+            -w "\n%{http_code}" \
+            --connect-timeout 60 \
+            --max-time 300)
+
+          HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
+          CurlResponse=$(echo "$CurlResponse" | sed '$d')
+
+          if [ "$HTTP_CODE" != "200" ] || echo "$CurlResponse" | grep -q '"error"'; then
+            echo "Primary AI (akai-net) failed with HTTP $HTTP_CODE, trying fallback..."
+            sed -i 's/"model": "akai-net"/"model": "minimax-m2.7:cloud"/' payload.json
+            CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ollama" \
+              -H "User-Agent: GitHubActions-CI" \
+              -d @payload.json \
+              -w "\n%{http_code}" \
+              --connect-timeout 60 \
+              --max-time 300)
+            HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
+            CurlResponse=$(echo "$CurlResponse" | sed '$d')
+            if [ "$HTTP_CODE" != "200" ] || echo "$CurlResponse" | grep -q '"error"'; then
+              echo "Fallback AI also failed. Both primary and fallback are unavailable."
+              exit 1
+            fi
+          fi
 
           echo "$CurlResponse" > response.txt
 
