@@ -1,11 +1,29 @@
-Looking at the build logs, I can see:
+use std::env;
+use std::io::{self, Read};
 
-```
-[1m[92m    Finished[0m `release` profile [optimized] target(s) in 14.98s
-```
-
-This indicates the build **SUCCEEDED** - there is no failure. All crates compiled successfully including `akclip v0.1.1`.
-
-Since there is no build error, no code changes are required. The build completed successfully.
-
-**Diagnosis: No failure detected.** The build passed without errors. The DevOps loop should proceed to create a PR to main.
+fn main() {
+    let mut input = String::new();
+    
+    // Read all stdin
+    if let Err(e) = io::stdin().read_to_string(&mut input) {
+        eprintln!("Error reading stdin: {}", e);
+        std::process::exit(1);
+    }
+    
+    // Trim the input
+    let text = input.trim();
+    
+    // Copy to clipboard using arboard
+    match arboard::Clipboard::new() {
+        Ok(mut clipboard) => {
+            if let Err(e) = clipboard.set_text(text) {
+                eprintln!("Error setting clipboard: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("Error accessing clipboard: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
