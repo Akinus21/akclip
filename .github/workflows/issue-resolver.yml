@@ -399,13 +399,11 @@ jobs:
             "This PR contains the autonomous fix for the reported issue." \
             "The agent has verified that the build passes. Merging to devops will trigger integration to main.")
 
-          gh label create automerge-ready --repo $REPO_SLUG --description "Agent PR ready for auto-merge" 2>/dev/null || true
           gh pr create \
             --base devops \
             --head $BRANCH_NAME \
             --title "Fix issue #${ISSUE_NUM}" \
-            --body "${PR_BODY}" \
-            --label "automerge-ready"
+            --body "${PR_BODY}"
 
       - name: Post PR Link to Issue
         run: |
