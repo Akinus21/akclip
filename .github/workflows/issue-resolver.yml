@@ -240,14 +240,21 @@ jobs:
                 if (line.startsWith("data:")) {
                   try {
                     const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    const delta = parsedChunk.choices[0].delta.content || "";
-                    combinedContent += delta;
+                    if (parsedChunk.choices && parsedChunk.choices[0] && parsedChunk.choices[0].delta) {
+                      const delta = parsedChunk.choices[0].delta.content || "";
+                      combinedContent += delta;
+                    }
                   } catch (err) {}
                 }
               }
             } else {
               const data = JSON.parse(rawInput);
-              combinedContent = data.choices[0].message.content || "";
+              if (data.choices && data.choices[0] && data.choices[0].message) {
+                combinedContent = data.choices[0].message.content || "";
+              } else if (data.error) {
+                console.error("AI returned error:", data.error);
+                process.exit(1);
+              }
             }
 
             if (!combinedContent) {
