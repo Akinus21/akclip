@@ -186,8 +186,8 @@ jobs:
 
           cat > fix.js << 'ENDSCRIPT'
           const fs = require("fs");
-          const issueBody = process.env.ISSUE_BODY || "";
-          const commentBody = process.env.COMMENT_BODY || "";
+          const issueBody = (process.env.ISSUE_BODY || "").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
+          const commentBody = (process.env.COMMENT_BODY || "").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
           const mainRs = fs.readFileSync("src/main.rs", "utf8");
           let agentsMd = "";
           let cargoToml = "";
