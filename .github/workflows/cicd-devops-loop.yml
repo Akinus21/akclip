@@ -130,7 +130,7 @@ jobs:
           try { cleanupWorkflow = fs.readFileSync(".github/workflows/issue-cleanup.yml", "utf8"); } catch (e) {}
 
           const payload = {
-            model: "akai-net",
+            model: "minimax-m2.7:cloud",
             stream: false,
             messages: [
               {
@@ -187,7 +187,7 @@ jobs:
 
           if [ "$HTTP_CODE" != "200" ] || ! echo "$CurlResponse" | head -c1 | grep -q '{'; then
             echo "Primary AI (akai-net) failed with HTTP $HTTP_CODE or invalid response, trying fallback..."
-            sed -i 's/"model": "akai-net"/"model": "minimax-m2.7:cloud"/' payload.json
+            sed -i 's/"model": "minimax-m2.7:cloud"/"model": "minimax-m2.7"/' payload.json
             CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer ollama" \
