@@ -63,11 +63,11 @@ jobs:
 
             # Include build error from previous iteration
             if [ -f .build_error.txt ]; then
-              BUILD_ERROR=$(cat .build_error.txt)
+              echo "Including build error from previous iteration..."
               ISSUE_BODY="${ISSUE_BODY}
 
 [BUILD ERROR FROM PREVIOUS ITERATION]:
-${BUILD_ERROR}"
+$(cat .build_error.txt)"
             fi
 
             echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
@@ -173,7 +173,8 @@ ${BUILD_ERROR}"
               "Loop history:" \
               "${LOOP_HISTORY}")
             gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
-            exit 0
+            echo "::error::Issue resolver failed after 10 iterations"
+            exit 1
           fi
 
           mkdir -p .git/info
