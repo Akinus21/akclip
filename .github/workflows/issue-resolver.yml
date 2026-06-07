@@ -170,14 +170,12 @@ jobs:
             "   - CI/CD, GitHub Actions, Homebrew, releases, checksums -> fix relevant workflow file\n" +
             "   - Logic errors -> fix src/main.rs\n\n" +
             "## IMPORTANT RULES\n\n" +
-            "1. Only return code for the file that NEEDS fixing\n" +
-            "2. Rust code: start with 'use std::env;' or 'fn main'\n" +
-            "3. Workflow code: start with 'name:' and contain 'jobs:'\n" +
-            "4. Do NOT use markdown code blocks (no ```)\n" +
-            "5. Make sure Rust code compiles before returning\n" +
-            "6. For Homebrew issues: the tarball structure should be akclip/target/release/akclip\n" +
-            "7. For checksum issues: SHA256 must match the GitHub release asset exactly\n\n" +
-            "Analyze the issue and respond with ONLY the raw file content that fixes it.";
+            "1. Your ENTIRE response must be ONLY raw code - no backticks, no markdown, no text\n" +
+            "2. For Rust files: start directly with 'use std::env;' or 'fn main' - nothing else\n" +
+            "3. For Workflow files: start directly with 'name:' - nothing else\n" +
+            "4. Do NOT explain what you changed or why - ONLY output the fixed file content\n" +
+            "5. If you include any text, commentary, or formatting, the fix will fail\n\n" +
+            "Analyze the issue and respond with ONLY the raw file content that fixes it. Your response must be ONLY the raw code - NO backticks, NO markdown, NO explanations, NO analysis - just pure raw code starting from the first character of the file.";
 
           const payload = {
             model: "minimax-m2.7:cloud",
@@ -284,9 +282,32 @@ jobs:
             }
 
             let cleaned = combinedContent.trim();
+
+            // VALIDATION: Ensure response looks like code, not text
+            const firstLine = cleaned.split('\n')[0].trim();
+            const codeStartPatterns = ['use ', 'fn ', 'struct ', 'impl ', 'enum ', 'mod ', 'pub ', 'const ', 'let ', 'static ', 'impl ', 'trait ', 'type '];
+            const isLikelyCode = codeStartPatterns.some(p => firstLine.startsWith(p));
+
+            // Check if response contains explanation indicators
+            const explanationIndicators = ['Looking at', 'The issue', 'The problem', 'I think', 'I need to', 'Here is', 'This is', 'The code'];
+            const hasExplanation = explanationIndicators.some(e => cleaned.startsWith(e));
+
+            if (!isLikelyCode || hasExplanation) {
+              console.error("INVALID RESPONSE: AI returned explanatory text instead of code");
+              console.error("First line:", firstLine.substring(0, 100));
+              process.exit(1);
+            }
+
             if (cleaned.startsWith("```")) {
               cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
               cleaned = cleaned.replace(/```$/, "");
+            }
+
+            // Additional check after stripping backticks
+            const stillHasExplanations = explanationIndicators.some(e => cleaned.startsWith(e));
+            if (stillHasExplanations) {
+              console.error("INVALID RESPONSE: Contains explanation text");
+              process.exit(1);
             }
 
             if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
