@@ -156,12 +156,12 @@ jobs:
                   "   - Rust compilation errors -> fix src/main.rs\n" +
                   "   - CI/CD workflow errors -> fix relevant workflow file\n\n" +
                   "## IMPORTANT RULES\n\n" +
-                  "1. Only return code for the file that NEEDS fixing\n" +
-                  "2. Rust code: start with 'use std::env;' or 'fn main'\n" +
-                  "3. Workflow code: start with 'name:' and contain 'jobs:'\n" +
-                  "4. Do NOT use markdown code blocks (no ```)\n" +
-                  "5. Make sure Rust code compiles before returning\n\n" +
-                  "Analyze the build error and respond with ONLY the raw file content that fixes it."
+                  "1. Your ENTIRE response must be ONLY raw code - no backticks, no markdown, no text\n" +
+                  "2. For Rust files: start directly with 'use std::env;' or 'fn main' - nothing else\n" +
+                  "3. For Workflow files: start directly with 'name:' - nothing else\n" +
+                  "4. Do NOT explain what you changed or why - ONLY output the fixed file content\n" +
+                  "5. If you include any text, commentary, or formatting, the fix will fail\n\n" +
+                  "Analyze the build error and respond with ONLY the raw file content that fixes it. Your response must be ONLY the raw code - NO backticks, NO markdown, NO explanations, NO analysis - just pure raw code starting from the first character of the file."
               },
               {
                 role: "user",
