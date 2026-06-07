@@ -331,9 +331,9 @@ jobs:
             const hasExplanation = explanationIndicators.some(e => firstLine.startsWith(e));
 
             if (!isLikelyCode || hasExplanation) {
-              console.warn("WARNING: Response looks like explanation text, not code");
-              console.warn("First line:", firstLine.substring(0, 100));
-              console.warn("Writing response anyway to allow build verification...");
+              console.error("INVALID RESPONSE: AI returned explanatory text instead of code");
+              console.error("First line:", firstLine.substring(0, 100));
+              process.exit(1);
             }
 
             if (cleaned.startsWith("```")) {
@@ -341,18 +341,19 @@ jobs:
               cleaned = cleaned.replace(/```$/, "");
             }
 
-            if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
+            // STRICT detection: must start with expected patterns
+            if (firstLine.startsWith('name:') && cleaned.includes("on:") && cleaned.includes("jobs:")) {
               console.log("DETECTED: Workflow file needs fixing");
               fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
               fs.writeFileSync("detected_file.txt", "workflow");
-            } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
+            } else if (firstLine.startsWith('use ') || firstLine.startsWith('fn ') || firstLine.startsWith('struct ') || firstLine.startsWith('impl ') || firstLine.startsWith('const ') || firstLine.startsWith('let ') || firstLine.startsWith('pub ') || firstLine.startsWith('mod ') || firstLine.startsWith('static ') || firstLine.startsWith('enum ') || firstLine.startsWith('trait ') || firstLine.startsWith('type ')) {
               console.log("DETECTED: Rust source file needs fixing");
               fs.writeFileSync("src/main.rs", cleaned);
               fs.writeFileSync("detected_file.txt", "rust");
             } else {
-              console.log("DETECTED: Defaulting to Rust source");
-              fs.writeFileSync("src/main.rs", cleaned);
-              fs.writeFileSync("detected_file.txt", "rust");
+              console.error("INVALID RESPONSE: Cannot determine file type from response");
+              console.error("First line:", firstLine.substring(0, 100));
+              process.exit(1);
             }
           } catch (e) {
             console.error("Failed processing response:", e.message);
