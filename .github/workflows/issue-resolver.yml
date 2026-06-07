@@ -9,7 +9,8 @@ on:
     types: [created, edited]
   push:
     branches:
-      - 'issue-*'
+      - main
+      - devops
 
 permissions:
   contents: write
@@ -195,19 +196,25 @@ jobs:
             "[release-sync.yml]:\n" + releaseWorkflow + "\n\n" +
             "[issue-cleanup.yml]:\n" + cleanupWorkflow + "\n\n" +
             "## AGENTS.md (Agent Guidelines):\n" + agentsMd + "\n\n" +
-            "## YOUR TASK\n\n" +
-            "1. DIAGNOSE the issue based on user's description\n" +
-            "2. FIX the appropriate file(s):\n" +
-            "   - Rust compilation/runtime errors -> fix src/main.rs\n" +
-            "   - CI/CD, GitHub Actions, Homebrew, releases, checksums -> fix relevant workflow file\n" +
-            "   - Logic errors -> fix src/main.rs\n\n" +
-            "## IMPORTANT RULES\n\n" +
-            "1. Your ENTIRE response must be ONLY raw code - no backticks, no markdown, no text\n" +
-            "2. For Rust files: start directly with 'use std::env;' or 'fn main' - nothing else\n" +
-            "3. For Workflow files: start directly with 'name:' - nothing else\n" +
-            "4. Do NOT explain what you changed or why - ONLY output the fixed file content\n" +
-            "5. If you include any text, commentary, or formatting, the fix will fail\n\n" +
-            "Analyze the issue and respond with ONLY the raw file content that fixes it. Your response must be ONLY the raw code - NO backticks, NO markdown, NO explanations, NO analysis - just pure raw code starting from the first character of the file.";
+            "## YOUR TASK
+
+            1. DIAGNOSE the issue based on user's description and build errors
+            2. FIX the appropriate file(s):
+               - Rust compilation/runtime errors -> fix src/main.rs
+               - CI/CD, GitHub Actions, Homebrew, releases, checksums -> fix relevant workflow file
+               - Logic errors -> fix src/main.rs
+
+            ## CRITICAL INSTRUCTIONS
+
+            Your ENTIRE response must be ONLY valid code for the file that needs fixing.
+            - NO explanations, NO analysis, NO markdown, NO backticks, NO text whatsoever
+            - For Rust: start with 'use ' or 'fn ' - the very first characters
+            - For YAML: start with 'name:' - the very first characters
+            - If you output anything except pure code starting with these exact patterns, the fix will FAIL
+
+            FAILURE CONSEQUENCE: If you include any explanatory text, the workflow will detect this as invalid and trigger ANOTHER iteration. This wastes resources. ONLY output raw code.
+
+            The user is counting on you to output ONLY code that can be compiled/applied immediately.
 
           const payload = {
             model: "minimax-m2.7:cloud",
@@ -413,7 +420,12 @@ jobs:
           BRANCH_NAME=$(git branch --show-current)
           echo "Current branch: $BRANCH_NAME"
 
-          if cargo check 2>&1; then
+          BUILD_OUTPUT=$(cargo check 2>&1)
+          if echo "$BUILD_OUTPUT" | grep -q "error\|warning"; then
+            echo "$BUILD_OUTPUT" > .build_error.txt
+          fi
+
+          if echo "$BUILD_OUTPUT" | tail -1 | grep -q "Finished\|Checking\|Compiling"; then
             echo "Build check passed on $BRANCH_NAME!"
             echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
           else
@@ -421,6 +433,7 @@ jobs:
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
             git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, triggering iteration"
             git push origin $BRANCH_NAME
           fi
