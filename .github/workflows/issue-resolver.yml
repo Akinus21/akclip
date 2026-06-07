@@ -63,11 +63,10 @@ jobs:
 
             # Include build error from previous iteration
             if [ -f .build_error.txt ]; then
-              BUILD_ERROR=$(cat .build_error.txt)
-              ISSUE_BODY="${ISSUE_BODY}
-
-[BUILD ERROR FROM PREVIOUS ITERATION]:
-${BUILD_ERROR}"
+              echo "Including build error from previous iteration..."
+              printf '\n[BUILD ERROR FROM PREVIOUS ITERATION]\n' >> .issue_context.txt
+              head -30 .build_error.txt >> .issue_context.txt
+              ISSUE_BODY=$(cat .issue_context.txt)
             fi
 
             echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
@@ -173,7 +172,8 @@ ${BUILD_ERROR}"
               "Loop history:" \
               "${LOOP_HISTORY}")
             gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
-            exit 0
+            echo "::error::Issue resolver failed after 10 iterations"
+            exit 1
           fi
 
           mkdir -p .git/info
@@ -182,6 +182,7 @@ ${BUILD_ERROR}"
           echo "fix.js" >> .git/info/exclude
           echo "VALIDATION_FAILED" >> .git/info/exclude
           echo ".build_error.txt" >> .git/info/exclude
+          echo ".issue_context.txt" >> .git/info/exclude
 
           cat > fix.js << 'ENDSCRIPT'
           const fs = require("fs");
