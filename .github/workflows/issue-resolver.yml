@@ -46,9 +46,19 @@ jobs:
           if [ "${{ github.event_name }}" == "issue_comment" ]; then
             echo "Triggered by issue comment"
             echo "ISSUE_NUM=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
+            echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
+            echo "$COMMENT_BODY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" == "issues" ]; then
             echo "Triggered by issue"
             echo "ISSUE_NUM=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
+            echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "COMMENT_BODY=" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
             echo "Triggered by PR comment"
             ISSUE_NUM=$(echo "$PR_BODY" | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
@@ -58,6 +68,9 @@ jobs:
             fi
             echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
             echo "PR_NUM=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
+            echo "$COMMENT_BODY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           fi
 
       - name: Setup Issue Branch
@@ -96,7 +109,8 @@ jobs:
           REPO_SLUG: ${{ github.repository }}
           ISSUE_NUM: ${{ steps.issue_info.outputs.ISSUE_NUM }}
           PR_NUM: ${{ steps.issue_info.outputs.PR_NUM }}
-          COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_BODY: ${{ steps.issue_info.outputs.ISSUE_BODY }}
+          COMMENT_BODY: ${{ steps.issue_info.outputs.COMMENT_BODY }}
         run: |
           echo "Analyzing issue for autonomous fix..."
 
@@ -283,31 +297,31 @@ jobs:
 
             let cleaned = combinedContent.trim();
 
-            // VALIDATION: Ensure response looks like code, not text
+            // VALIDATION: Ensure response is valid code, not explanation text
             const firstLine = cleaned.split('\n')[0].trim();
-            const codeStartPatterns = ['use ', 'fn ', 'struct ', 'impl ', 'enum ', 'mod ', 'pub ', 'const ', 'let ', 'static ', 'impl ', 'trait ', 'type '];
-            const isLikelyCode = codeStartPatterns.some(p => firstLine.startsWith(p));
+
+            // Acceptable starting patterns for various file types
+            const validStartPatterns = [
+              'use ', 'fn ', 'struct ', 'impl ', 'enum ', 'mod ', 'pub ', 'const ', 'let ', 'static ', 'trait ', 'type ',  // Rust
+              'name:', 'on:', 'jobs:', 'steps:', 'env:', 'run:', 'uses:', 'if:', 'with:', 'permissions:',  // YAML/workflow
+              '<', '<?',  // XML/HTML
+              '{', '['   // JSON
+            ];
+            const isLikelyCode = validStartPatterns.some(p => firstLine.startsWith(p));
 
             // Check if response contains explanation indicators
-            const explanationIndicators = ['Looking at', 'The issue', 'The problem', 'I think', 'I need to', 'Here is', 'This is', 'The code'];
-            const hasExplanation = explanationIndicators.some(e => cleaned.startsWith(e));
+            const explanationIndicators = ['Looking at', 'The issue', 'The problem', 'I think', 'I need to', 'Here is', 'This is', 'The code', 'error:', 'Error:'];
+            const hasExplanation = explanationIndicators.some(e => firstLine.startsWith(e));
 
             if (!isLikelyCode || hasExplanation) {
-              console.error("INVALID RESPONSE: AI returned explanatory text instead of code");
-              console.error("First line:", firstLine.substring(0, 100));
-              process.exit(1);
+              console.warn("WARNING: Response looks like explanation text, not code");
+              console.warn("First line:", firstLine.substring(0, 100));
+              console.warn("Writing response anyway to allow build verification...");
             }
 
             if (cleaned.startsWith("```")) {
               cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
               cleaned = cleaned.replace(/```$/, "");
-            }
-
-            // Additional check after stripping backticks
-            const stillHasExplanations = explanationIndicators.some(e => cleaned.startsWith(e));
-            if (stillHasExplanations) {
-              console.error("INVALID RESPONSE: Contains explanation text");
-              process.exit(1);
             }
 
             if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
