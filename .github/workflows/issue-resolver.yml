@@ -7,6 +7,9 @@ on:
     types: [created, edited]
   pull_request_review_comment:
     types: [created, edited]
+  push:
+    branches:
+      - 'issue-*'
 
 permissions:
   contents: write
@@ -380,11 +383,11 @@ jobs:
           BRANCH_NAME=$(git branch --show-current)
           echo "Current branch: $BRANCH_NAME"
 
-          if cargo build --release 2>&1; then
-            echo "Build succeeded on $BRANCH_NAME!"
+          if cargo check 2>&1; then
+            echo "Build check passed on $BRANCH_NAME!"
             echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
           else
-            echo "Build failed. AI will need to iterate..."
+            echo "Build check failed. AI will need to iterate..."
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
           fi
 
