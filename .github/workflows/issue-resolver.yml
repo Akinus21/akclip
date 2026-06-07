@@ -46,7 +46,15 @@ jobs:
         run: |
           echo "Determining issue context..."
 
-          if [ "${{ github.event_name }}" == "issue_comment" ]; then
+          if [ "${{ github.event_name }}" == "push" ]; then
+            # Extract issue number from branch name (issue-55 -> 55)
+            CURRENT_BRANCH=$(git branch --show-current)
+            ISSUE_NUM=$(echo "$CURRENT_BRANCH" | grep -oE '[0-9]+' || echo "0")
+            echo "Triggered by push to $CURRENT_BRANCH, extracted issue #$ISSUE_NUM"
+            echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
+            echo "ISSUE_BODY=" >> $GITHUB_OUTPUT
+            echo "COMMENT_BODY=" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "issue_comment" ]; then
             echo "Triggered by issue comment"
             echo "ISSUE_NUM=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
             echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
@@ -91,11 +99,17 @@ jobs:
 
           echo "Setting up branch: $BRANCH_NAME"
 
-          if git ls-remote --heads origin $BRANCH_NAME 2>/dev/null | grep -q "$BRANCH_NAME"; then
+          CURRENT_BRANCH=$(git branch --show-current)
+
+          # If we're already on the correct issue branch (from push trigger), skip creation
+          if [ "$CURRENT_BRANCH" = "$BRANCH_NAME" ]; then
+            echo "Already on branch $BRANCH_NAME, pulling latest..."
+            git pull origin $BRANCH_NAME --rebase || true
+          elif git ls-remote --heads origin $BRANCH_NAME 2>/dev/null | grep -q "$BRANCH_NAME"; then
             echo "Branch exists, checking out..."
             git fetch origin $BRANCH_NAME
             git checkout $BRANCH_NAME
-            git pull origin $BRANCH_NAME
+            git pull origin $BRANCH_NAME --rebase || true
           else
             echo "Creating new branch: $BRANCH_NAME from devops"
             git checkout -b $BRANCH_NAME origin/devops
