@@ -417,8 +417,12 @@ jobs:
             echo "Build check passed on $BRANCH_NAME!"
             echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
           else
-            echo "Build check failed. AI will need to iterate..."
+            echo "Build check failed. Pushing to trigger iteration..."
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, triggering iteration"
+            git push origin $BRANCH_NAME
           fi
 
   create-pr:
