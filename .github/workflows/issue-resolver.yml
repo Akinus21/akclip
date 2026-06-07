@@ -136,7 +136,7 @@ jobs:
 
           git pull origin $(git branch --show-current) --rebase || true
 
-LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
+          LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
           echo "Current autonomous remediation loop depth: $LOOP_COUNT"
           if [ "$LOOP_COUNT" -ge 10 ]; then
             echo "CRITICAL: Maximum iteration depth reached (10 attempts)."
