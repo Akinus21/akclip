@@ -11,14 +11,21 @@ try {
       if (line.startsWith("data:")) {
         try {
           const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-          const delta = parsedChunk.choices[0].delta.content || "";
-          combinedContent += delta;
+          if (parsedChunk.choices && parsedChunk.choices[0] && parsedChunk.choices[0].delta) {
+            const delta = parsedChunk.choices[0].delta.content || "";
+            combinedContent += delta;
+          }
         } catch (err) {}
       }
     }
   } else {
     const data = JSON.parse(rawInput);
-    combinedContent = data.choices[0].message.content || "";
+    if (data.choices && data.choices[0] && data.choices[0].message) {
+      combinedContent = data.choices[0].message.content || "";
+    } else if (data.error) {
+      console.error("AI returned error:", data.error);
+      process.exit(1);
+    }
   }
 
   if (!combinedContent) {
@@ -27,25 +34,20 @@ try {
   }
 
   let cleaned = combinedContent.trim();
-  // Remove markdown code blocks
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
     cleaned = cleaned.replace(/```$/, "");
   }
 
-  // Detect which file to fix based on content
   if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
-    console.log("DETECTED: Workflow file needs fixing");
     fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
-    fs.writeFileSync("detected_file.txt", "workflow");
+    console.log("Workflow file updated!");
   } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
-    console.log("DETECTED: Rust source file needs fixing");
     fs.writeFileSync("src/main.rs", cleaned);
-    fs.writeFileSync("detected_file.txt", "rust");
+    console.log("Rust source file updated!");
   } else {
-    console.log("DETECTED: Defaulting to Rust source");
     fs.writeFileSync("src/main.rs", cleaned);
-    fs.writeFileSync("detected_file.txt", "rust");
+    console.log("Defaulting to Rust source!");
   }
 } catch (e) {
   console.error("Failed processing response:", e.message);
