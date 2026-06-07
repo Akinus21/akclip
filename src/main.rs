@@ -1,8 +1,3 @@
-The `src/main.rs` file contains markdown/text instead of actual Rust code. The build error confirms this - it's trying to compile markdown content as Rust.
-
-I need to replace `src/main.rs` with proper Rust code for akclip:
-
-```rust
 use std::env;
 use std::io::{self, Read};
 
@@ -33,4 +28,3 @@ fn main() {
         }
     }
 }
-```
