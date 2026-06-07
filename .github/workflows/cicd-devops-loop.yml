@@ -59,13 +59,11 @@ jobs:
           if [ -n "$EXISTING_PR" ]; then
             echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME"
           else
-            gh label create automerge-ready --repo $REPO_SLUG --description "Agent PR ready for auto-merge" 2>/dev/null || true
             gh pr create \
               --base main \
               --head $BRANCH_NAME \
               --title "DevOps: update from ${BRANCH_NAME}" \
-              --body "DevOps loop completed successfully. Build verified. Ready to merge." \
-              --label "automerge-ready"
+              --body "DevOps loop completed successfully. Build verified. Ready to merge."
           fi
 
       - name: Remediate Any Failure
