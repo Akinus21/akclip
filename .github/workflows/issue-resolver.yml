@@ -157,6 +157,7 @@ jobs:
           echo "payload.json" >> .git/info/exclude
           echo "response.txt" >> .git/info/exclude
           echo "fix.js" >> .git/info/exclude
+          echo "VALIDATION_FAILED" >> .git/info/exclude
 
           cat > fix.js << 'ENDSCRIPT'
           const fs = require("fs");
@@ -333,7 +334,9 @@ jobs:
             if (!isLikelyCode || hasExplanation) {
               console.error("INVALID RESPONSE: AI returned explanatory text instead of code");
               console.error("First line:", firstLine.substring(0, 100));
-              process.exit(1);
+              console.error("Writing sentinel to trigger retry...");
+              fs.writeFileSync("VALIDATION_FAILED", "true");
+              process.exit(0);
             }
 
             if (cleaned.startsWith("```")) {
@@ -353,7 +356,9 @@ jobs:
             } else {
               console.error("INVALID RESPONSE: Cannot determine file type from response");
               console.error("First line:", firstLine.substring(0, 100));
-              process.exit(1);
+              console.error("Writing sentinel to trigger retry...");
+              fs.writeFileSync("VALIDATION_FAILED", "true");
+              process.exit(0);
             }
           } catch (e) {
             console.error("Failed processing response:", e.message);
@@ -364,6 +369,16 @@ jobs:
           node parse.js
 
           DETECTED_FILE=$(cat detected_file.txt)
+
+          if [ -f VALIDATION_FAILED ]; then
+            echo "Validation failed in previous run, pushing to trigger retry..."
+            rm -f VALIDATION_FAILED
+            git add -A
+            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): retry due to invalid AI response"
+            git push origin $(git branch --show-current)
+            echo "NO_CHANGES=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           if git diff --quiet; then
             echo "No changes needed. AI determined code is correct."
