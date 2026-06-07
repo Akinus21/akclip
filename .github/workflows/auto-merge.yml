@@ -5,18 +5,12 @@ on:
     types: [labeled, synchronize]
   check_suite:
     types: [completed]
-  status:
 
 jobs:
   auto-merge:
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'automerge-ready')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Wait for all checks
         run: |
           PR_NUM=${{ github.event.pull_request.number }}
@@ -24,19 +18,19 @@ jobs:
 
           TIMEOUT=600
           ELAPSED=0
-          INTERVAL=10
+          INTERVAL=15
 
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            # Get all check runs for this PR
-            CHECKS=$(gh api repos/${{ github.repository }}/commits/${{ github.event.pull_request.head.sha }}/check-runs --paginate 2>/dev/null || echo '{"check_runs":[]}')
+            # Use gh pr checks to get status
+            CHECKS=$(gh pr checks $PR_NUM --json status,conclusion 2>/dev/null || echo "[]")
+            
+            TOTAL=$(echo "$CHECKS" | jq 'length')
+            COMPLETED=$(echo "$CHECKS" | jq '[.[] | select(.conclusion != null)] | length')
+            IN_PROGRESS=$(echo "$CHECKS" | jq '[.[] | select(.status == "in_progress" or .status == "queued") ] | length')
 
-            # Count total and completed checks
-            TOTAL=$(echo "$CHECKS" | jq '.check_runs | length')
-            COMPLETED=$(echo "$CHECKS" | jq '[.check_runs[] | select(.conclusion != null)] | length')
+            echo "Checks: $COMPLETED/$TOTAL completed, $IN_PROGRESS in progress"
 
-            echo "Checks: $COMPLETED/$TOTAL completed"
-
-            if [ "$COMPLETED" -ge 1 ] && [ "$COMPLETED" -eq "$TOTAL" ]; then
+            if [ "$TOTAL" -gt 0 ] && [ "$COMPLETED" -eq "$TOTAL" ]; then
               echo "All checks completed!"
               break
             fi
@@ -53,12 +47,10 @@ jobs:
       - name: Verify all checks passed
         run: |
           PR_NUM=${{ github.event.pull_request.number }}
-          SHA=${{ github.event.pull_request.head.sha }}
+          CHECKS=$(gh pr checks $PR_NUM --json status,conclusion 2>/dev/null || echo "[]")
 
-          CHECKS=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs --paginate 2>/dev/null || echo '{"check_runs":[]}')
-
-          FAILED=$(echo "$CHECKS" | jq '[.check_runs[] | select(.conclusion == "failure")] | length')
-          CANCELLED=$(echo "$CHECKS" | jq '[.check_runs[] | select(.conclusion == "cancelled")] | length')
+          FAILED=$(echo "$CHECKS" | jq '[.[] | select(.conclusion == "failure")] | length')
+          CANCELLED=$(echo "$CHECKS" | jq '[.[] | select(.conclusion == "cancelled")] | length')
 
           if [ "$FAILED" -gt 0 ] || [ "$CANCELLED" -gt 0 ]; then
             echo "Some checks failed: $FAILED failures, $CANCELLED cancellations"
@@ -66,8 +58,8 @@ jobs:
             exit 1
           fi
 
-          SUCCESS=$(echo "$CHECKS" | jq '[.check_runs[] | select(.conclusion == "success")] | length')
-          TOTAL=$(echo "$CHECKS" | jq '.check_runs | length')
+          SUCCESS=$(echo "$CHECKS" | jq '[.[] | select(.conclusion == "success")] | length')
+          TOTAL=$(echo "$CHECKS" | jq 'length')
 
           echo "All $TOTAL checks passed (success: $SUCCESS)"
 
