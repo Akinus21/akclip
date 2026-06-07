@@ -52,7 +52,27 @@ jobs:
             ISSUE_NUM=$(echo "$CURRENT_BRANCH" | grep -oE '[0-9]+' || echo "0")
             echo "Triggered by push to $CURRENT_BRANCH, extracted issue #$ISSUE_NUM"
             echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
-            echo "ISSUE_BODY=" >> $GITHUB_OUTPUT
+
+            # Load previous issue context from .github/issue-context if exists
+            if [ -f .github/issue-context ]; then
+              echo "Loading previous issue context..."
+              ISSUE_BODY=$(cat .github/issue-context)
+            else
+              ISSUE_BODY=""
+            fi
+
+            # Include build error from previous iteration
+            if [ -f .build_error.txt ]; then
+              BUILD_ERROR=$(cat .build_error.txt)
+              ISSUE_BODY="${ISSUE_BODY}
+
+[BUILD ERROR FROM PREVIOUS ITERATION]:
+${BUILD_ERROR}"
+            fi
+
+            echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
+            echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
             echo "COMMENT_BODY=" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" == "issue_comment" ]; then
             echo "Triggered by issue comment"
@@ -115,7 +135,12 @@ jobs:
             git checkout -b $BRANCH_NAME origin/devops
             mkdir -p .github
             echo "$ISSUE_NUM" > .github/issue-number
-            git add .github/issue-number
+            # Save issue context for future iterations
+            ISSUE_BODY_STR="${{ steps.issue_info.outputs.ISSUE_BODY }}"
+            if [ -n "$ISSUE_BODY_STR" ]; then
+              echo "$ISSUE_BODY_STR" > .github/issue-context
+            fi
+            git add .github/issue-number .github/issue-context 2>/dev/null || git add .github/issue-number
             git commit -m "chore: initialized issue branch for #${ISSUE_NUM}"
             git push -u origin $BRANCH_NAME
           fi
@@ -156,6 +181,7 @@ jobs:
           echo "response.txt" >> .git/info/exclude
           echo "fix.js" >> .git/info/exclude
           echo "VALIDATION_FAILED" >> .git/info/exclude
+          echo ".build_error.txt" >> .git/info/exclude
 
           cat > fix.js << 'ENDSCRIPT'
           const fs = require("fs");
@@ -417,15 +443,21 @@ jobs:
           BRANCH_NAME=$(git branch --show-current)
           echo "Current branch: $BRANCH_NAME"
 
-          if cargo check 2>&1; then
+          BUILD_OUTPUT=$(cargo check 2>&1)
+          BUILD_EXIT=$?
+
+          if [ $BUILD_EXIT -eq 0 ]; then
             echo "Build check passed on $BRANCH_NAME!"
             echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
+            rm -f .build_error.txt
           else
-            echo "Build check failed. Pushing to trigger iteration on THIS branch..."
+            echo "Build check failed. Saving error and pushing to trigger iteration..."
+            echo "$BUILD_OUTPUT" > .build_error.txt
+            echo "$BUILD_OUTPUT"
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add -A
+            git add .build_error.txt
             git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch"
             git push origin $BRANCH_NAME
           fi
