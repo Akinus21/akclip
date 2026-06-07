@@ -9,8 +9,7 @@ on:
     types: [created, edited]
   push:
     branches:
-      - main
-      - devops
+      - 'issue-*'
 
 permissions:
   contents: write
@@ -137,21 +136,19 @@ jobs:
 
           git pull origin $(git branch --show-current) --rebase || true
 
-          LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
+LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
           echo "Current autonomous remediation loop depth: $LOOP_COUNT"
           if [ "$LOOP_COUNT" -ge 10 ]; then
             echo "CRITICAL: Maximum iteration depth reached (10 attempts)."
-            echo "Creating issue to report persistent failure..."
+            echo "Posting failure comment to existing issue..."
             LOOP_HISTORY=$(git log -n 10 --oneline)
-            ISSUE_BODY=$(printf '%s\n%s\n\n%s\n%s\n' \
-              "The autonomous agent attempted 10 iterations to fix issue but was unsuccessful. Manual intervention required." \
+            COMMENT_BODY=$(printf '%s\n%s\n%s\n\n%s\n' \
+              "## Automated Fix Failed" \
+              "The autonomous agent attempted 10 iterations to fix this issue but was unsuccessful. Manual intervention is required." \
               "Loop history:" \
-              "${LOOP_HISTORY}" \
-              "Please review and provide guidance.")
-            gh issue create \
-              --title "Automated Fix Failed: Issue #${ISSUE_NUM}" \
-              --body "${ISSUE_BODY}"
-            exit 1
+              "${LOOP_HISTORY}")
+            gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
+            exit 0
           fi
 
           mkdir -p .git/info
@@ -420,21 +417,16 @@ jobs:
           BRANCH_NAME=$(git branch --show-current)
           echo "Current branch: $BRANCH_NAME"
 
-          BUILD_OUTPUT=$(cargo check 2>&1)
-          if echo "$BUILD_OUTPUT" | grep -q "error\|warning"; then
-            echo "$BUILD_OUTPUT" > .build_error.txt
-          fi
-
-          if echo "$BUILD_OUTPUT" | tail -1 | grep -q "Finished\|Checking\|Compiling"; then
+          if cargo check 2>&1; then
             echo "Build check passed on $BRANCH_NAME!"
             echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
           else
-            echo "Build check failed. Pushing to trigger iteration..."
+            echo "Build check failed. Pushing to trigger iteration on THIS branch..."
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, triggering iteration"
+            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch"
             git push origin $BRANCH_NAME
           fi
 
