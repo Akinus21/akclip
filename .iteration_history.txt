@@ -212,3 +212,40 @@ Cargo exit: 101
 [1m[92m  Downloaded[0m tiff v0.11.3
 ---
 Error location: --> [0msrc/main.rs:48:46
+[Iteration ]: Build failed with exit 101
+Error: [1m[92m    Checking[0m akclip v0.1.1 (/home/runner/work/akclip/akclip)
+[1m[91merror[E0277][0m[1m: `arboard::Clipboard` doesn't implement `Debug`[0m
+  [1m[94m--> [0msrc/main.rs:16:5
+   [1m[94m|[0m
+[1m[94m11[0m [1m[94m|[0m #[derive(Debug)]
+   [1m[94m|[0m          [1m[94m-----[0m [1m[94min this derive macro expansion[0m
+[1m[94m...[0m
+[1m[94m16[0m [1m[94m|[0m     clipboard: Clipboard,
+   [1m[94m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^^^[0m [1m[91mthe trait `Debug` is not implemented for `arboard::Clipboard`[0m
+
+[1m[91merror[E0596][0m[1m: cannot borrow `self.clipboard` as mutable, as it is behind a `&` reference[0m
+  [1m[94m--> [0msrc/main.rs:48:23
+   [1m[94m|[0m
+[1m[94m48[0m [1m[94m|[0m         let content = self.clipboard.get_text()?;
+   [1m[94m|[0m                       [1m[91m^^^^^^^^^^^^^^[0m [1m[91m`self` is a `&` reference, so it cannot be borrowed as mutable[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider changing this to be a mutable reference
+   [1m[94m|[0m
+[1m[94m47[0m [1m[94m| [0m    pub fn get_content(&[92mmut [0mself) -> Result<String, Box<dyn Error>> {
+   [1m[94m|[0m                         [92m+++[0m
+
+[1m[91merror[E0596][0m[1m: cannot borrow `self.clipboard` as mutable, as it is behind a `&` reference[0m
+  [1m[94m--> [0msrc/main.rs:53:9
+   [1m[94m|[0m
+[1m[94m53[0m [1m[94m|[0m         self.clipboard.set_text(content)?;
+   [1m[94m|[0m         [1m[91m^^^^^^^^^^^^^^[0m [1m[91m`self` is a `&` reference, so it cannot be borrowed as mutable[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider changing this to be a mutable reference
+   [1m[94m|[0m
+[1m[94m52[0m [1m[94m| [0m    pub fn set_content(&[92mmut [0mself, content: &str) -> Result<(), Box<dyn Error>> {
+   [1m[94m|[0m                         [92m+++[0m
+
+[1mSome errors have detailed explanations: E0277, E0596.[0m
+[1mFor more information about an error, try `rustc --explain E0277`.[0m
+[1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 3 previous errors
+---
