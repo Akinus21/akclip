@@ -1,0 +1,29 @@
+[1m[92m    Checking[0m akclip v0.1.1 (/home/runner/work/akclip/akclip)
+[1m[91merror[E0425][0m[1m: cannot find function `exit` in this scope[0m
+  [1m[94m--> [0msrc/main.rs:59:17
+   [1m[94m|[0m
+[1m[94m59[0m [1m[94m|[0m                 exit(1);
+   [1m[94m|[0m                 [1m[91m^^^^[0m [1m[91mnot found in this scope[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider importing one of these functions
+   [1m[94m|[0m
+[1m[94m39[0m [92m+ [0m    [92muse crate::exit;[0m
+   [1m[94m|[0m
+[1m[94m39[0m [92m+ [0m    [92muse std::process::exit;[0m
+   [1m[94m|[0m
+
+[1m[91merror[E0425][0m[1m: cannot find function `exit` in this scope[0m
+  [1m[94m--> [0msrc/main.rs:76:17
+   [1m[94m|[0m
+[1m[94m76[0m [1m[94m|[0m                 exit(1);
+   [1m[94m|[0m                 [1m[91m^^^^[0m [1m[91mnot found in this scope[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider importing one of these functions
+   [1m[94m|[0m
+[1m[94m39[0m [92m+ [0m    [92muse crate::exit;[0m
+   [1m[94m|[0m
+[1m[94m39[0m [92m+ [0m    [92muse std::process::exit;[0m
+   [1m[94m|[0m
+
+[1mFor more information about this error, try `rustc --explain E0425`.[0m
+[1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 2 previous errors
