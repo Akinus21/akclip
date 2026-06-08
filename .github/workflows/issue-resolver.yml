@@ -332,10 +332,10 @@ jobs:
           if [ "$DETECTED_FILE" = "rust" ]; then
             echo "Verifying Rust fix compiles..."
             if cargo check 2>&1; then
-              echo "Build verified!"
+              echo "Build verified! Will create PR in build verification step."
               git commit -m "fix(issue#$ISSUE_NUM): autonomously patched"
             else
-              echo "Build failed but pushing to trigger devops loop..."
+              echo "Build failed. Will retry in build verification step."
               git commit -m "fix(issue#$ISSUE_NUM): autonomously patched (build may need iteration)"
             fi
           else
@@ -343,8 +343,8 @@ jobs:
             git commit -m "fix(issue#$ISSUE_NUM): autonomously patched workflow"
           fi
 
-          CURRENT_BRANCH=$(git branch --show-current)
-          git push origin $CURRENT_BRANCH
+          # Don't push here - build_verify step will handle push on failure
+          # On success, build_verify creates PR
 
       - name: Build Verification
         id: build_verify
@@ -362,10 +362,7 @@ jobs:
             echo "Build check passed on $BRANCH_NAME!"
             echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
             rm -f .build_error.txt
-            # Save iteration context for next run
-            git log --oneline -n 1 > .iteration_history.txt
-            git add -f .iteration_history.txt
-            git commit -m "chore: update iteration context" || true
+            # Don't push on success - let the PR creation handle it
           else
             echo "Build check failed. Saving error and pushing to trigger iteration..."
             printf '%s\n' "$BUILD_OUTPUT" > .build_error.txt
