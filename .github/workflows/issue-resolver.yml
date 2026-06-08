@@ -200,7 +200,7 @@ jobs:
             # Extract error line number if available
             ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE "error\[E[0-9]+\].*:.*:[0-9]+:[0-9]+" | head -1 || echo "")
             if [ -z "$ERROR_LINE" ]; then
-              ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE "-->[^:]+:[0-9]+:[0-9]+" | head -1 || echo "")
+              ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE -e '-->[^:]+:[0-9]+:[0-9]+' | head -1 || echo "")
             fi
             echo "Error location: $ERROR_LINE" >> .iteration_history.txt
           fi
