@@ -80,7 +80,7 @@ jobs:
             echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
             echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
-            echo "$COMMENT_BODY" >> $GITHUB_OUTPUT
+            printf '%s' "$COMMENT_BODY" | base64 >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" == "issues" ]; then
             echo "Triggered by issue"
@@ -99,7 +99,7 @@ jobs:
             echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
             echo "PR_NUM=$PR_NUMBER" >> $GITHUB_OUTPUT
             echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
-            echo "$COMMENT_BODY" >> $GITHUB_OUTPUT
+            printf '%s' "$COMMENT_BODY" | base64 >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 
@@ -176,7 +176,7 @@ jobs:
 
           # Save issue body to temp file (escaped for JS safety)
           printf '%s' "$ISSUE_BODY" > .issue_body_tmp
-          printf '%s' "$COMMENT_BODY" > .comment_body_tmp
+          echo "$COMMENT_BODY" | base64 -d > .comment_body_tmp
 
           # Run cargo check to see if there are errors
           set +e
