@@ -249,3 +249,37 @@ Error: [1m[92m    Checking[0m akclip v0.1.1 (/home/runner/work/akclip/akclip)
 [1mFor more information about an error, try `rustc --explain E0277`.[0m
 [1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 3 previous errors
 ---
+[Iteration 3]
+Cargo exit: 101
+[1m[92m    Updating[0m crates.io index
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m anstyle v1.0.14
+[1m[92m  Downloaded[0m anstyle-parse v1.0.0
+[1m[92m  Downloaded[0m adler2 v2.0.1
+[1m[92m  Downloaded[0m anstream v1.0.0
+[1m[92m  Downloaded[0m miniz_oxide v0.8.9
+[1m[92m  Downloaded[0m memchr v2.8.1
+[1m[92m  Downloaded[0m smallvec v1.15.1
+[1m[92m  Downloaded[0m autocfg v1.5.1
+[1m[92m  Downloaded[0m anstyle-query v1.1.5
+[1m[92m  Downloaded[0m unicode-ident v1.0.24
+[1m[92m  Downloaded[0m gethostname v1.1.0
+[1m[92m  Downloaded[0m flate2 v1.1.9
+[1m[92m  Downloaded[0m zerocopy v0.8.50
+[1m[92m  Downloaded[0m zune-jpeg v0.5.15
+[1m[92m  Downloaded[0m zune-core v0.5.1
+[1m[92m  Downloaded[0m utf8parse v0.2.2
+[1m[92m  Downloaded[0m quote v1.0.45
+[1m[92m  Downloaded[0m x11rb v0.13.2
+[1m[92m  Downloaded[0m weezl v0.1.12
+[1m[92m  Downloaded[0m scopeguard v1.2.0
+[1m[92m  Downloaded[0m proc-macro2 v1.0.106
+[1m[92m  Downloaded[0m parking_lot v0.12.5
+[1m[92m  Downloaded[0m is_terminal_polyfill v1.70.2
+[1m[92m  Downloaded[0m colorchoice v1.0.5
+[1m[92m  Downloaded[0m env_filter v1.0.1
+[1m[92m  Downloaded[0m arboard v3.6.1
+[1m[92m  Downloaded[0m parking_lot_core v0.9.12
+[1m[92m  Downloaded[0m regex v1.12.3
+---
+Error location: --> [0msrc/main.rs:16:5
