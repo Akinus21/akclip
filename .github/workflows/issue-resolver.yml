@@ -316,8 +316,10 @@ jobs:
           BRANCH_NAME=$(git branch --show-current)
           echo "Current branch: $BRANCH_NAME"
 
+          set +e
           BUILD_OUTPUT=$(cargo check 2>&1)
           BUILD_EXIT=$?
+          set -e
 
           if [ $BUILD_EXIT -eq 0 ]; then
             echo "Build check passed on $BRANCH_NAME!"
@@ -325,14 +327,14 @@ jobs:
             rm -f .build_error.txt
           else
             echo "Build check failed. Saving error and pushing to trigger iteration..."
-            echo "$BUILD_OUTPUT" > .build_error.txt
-            echo "$BUILD_OUTPUT"
+            printf '%s\n' "$BUILD_OUTPUT" > .build_error.txt
+            printf '%s\n' "$BUILD_OUTPUT"
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
             git add .build_error.txt
-            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch"
-            git push origin $BRANCH_NAME
+            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch" || true
+            git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
           fi
 
   create-pr:
