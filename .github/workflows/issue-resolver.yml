@@ -190,72 +190,23 @@ jobs:
           printf '%s' "$ISSUE_BODY" > .issue_body_tmp
           printf '%s' "$COMMENT_BODY" > .comment_body_tmp
 
-          cat > fix.js << 'ENDSCRIPT'
-          const fs = require("fs");
-          const issueBody = fs.readFileSync(".issue_body_tmp", "utf8");
-          const commentBody = fs.readFileSync(".comment_body_tmp", "utf8");
-          const mainRs = fs.readFileSync("src/main.rs", "utf8");
-          let agentsMd = "";
-          let cargoToml = "";
-          let readmeMd = "";
-          let cicdWorkflow = "";
-          let issueWorkflow = "";
-          let releaseWorkflow = "";
-          let cleanupWorkflow = "";
-
-          try { agentsMd = fs.readFileSync(".github/agents/devops-sre.md", "utf8"); } catch (e) {}
-          try { cargoToml = fs.readFileSync("Cargo.toml", "utf8"); } catch (e) {}
-          try { readmeMd = fs.readFileSync("README.md", "utf8"); } catch (e) {}
-          try { cicdWorkflow = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8"); } catch (e) {}
-          try { issueWorkflow = fs.readFileSync(".github/workflows/issue-resolver.yml", "utf8"); } catch (e) {}
-          try { releaseWorkflow = fs.readFileSync(".github/workflows/release-sync.yml", "utf8"); } catch (e) {}
-          try { cleanupWorkflow = fs.readFileSync(".github/workflows/issue-cleanup.yml", "utf8"); } catch (e) {}
-
-          const userMessage = "[ISSUE DESCRIPTION]:\n" + issueBody + "\n\n[COMMENT FROM USER]:\n" + commentBody + "\n\nThe user has reported an issue with akclip. Please diagnose and fix it using the project context provided above.";
-
-          const systemPrompt = "You are an expert Rust engineer and DevOps engineer. Your role is to diagnose and fix issues autonomously.\n\n" +
-            "## PROJECT CONTEXT\n\n" +
-            "This is akclip - a Rust CLI tool that captures stdin to clipboard. It uses arboard for clipboard access.\n\n" +
-            "## PROJECT FILES\n\n" +
-            "[Cargo.toml]:\n" + cargoToml + "\n\n" +
-            "[src/main.rs]:\n" + mainRs + "\n\n" +
-            "[README.md]:\n" + readmeMd + "\n\n" +
-            "## WORKFLOW FILES\n\n" +
-            "[cicd-devops-loop.yml]:\n" + cicdWorkflow + "\n\n" +
-            "[issue-resolver.yml]:\n" + issueWorkflow + "\n\n" +
-            "[release-sync.yml]:\n" + releaseWorkflow + "\n\n" +
-            "[issue-cleanup.yml]:\n" + cleanupWorkflow + "\n\n" +
-            "## AGENTS.md (Agent Guidelines):\n" + agentsMd + "\n\n" +
-            "## YOUR TASK
-
-            1. DIAGNOSE the issue based on user's description and build errors
-            2. FIX the appropriate file(s):
-               - Rust compilation/runtime errors -> fix src/main.rs
-               - CI/CD, GitHub Actions, Homebrew, releases, checksums -> fix relevant workflow file
-               - Logic errors -> fix src/main.rs
-
-            ## CRITICAL INSTRUCTIONS
-
-            Your ENTIRE response must be ONLY valid code for the file that needs fixing.
-            - NO explanations, NO analysis, NO markdown, NO backticks, NO text whatsoever
-            - For Rust: start with 'use ' or 'fn ' - the very first characters
-            - For YAML: start with 'name:' - the very first characters
-            - If you output anything except pure code starting with these exact patterns, the fix will FAIL
-
-            FAILURE CONSEQUENCE: If you include any explanatory text, the workflow will detect this as invalid and trigger ANOTHER iteration. This wastes resources. ONLY output raw code.
-
-            The user is counting on you to output ONLY code that can be compiled/applied immediately.
-
-          const payload = {
-            model: "minimax-m2.7:cloud",
-            stream: false,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userMessage }
-            ]
-          };
-          fs.writeFileSync("payload.json", JSON.stringify(payload));
-          ENDSCRIPT
+          # Write minimal fix.js using echo
+          echo 'const fs=require("fs");' > fix.js
+          echo 'const ib=fs.readFileSync(".issue_body_tmp","utf8");' >> fix.js
+          echo 'const cb=fs.readFileSync(".comment_body_tmp","utf8");' >> fix.js
+          echo 'const mr=fs.readFileSync("src/main.rs","utf8");' >> fix.js
+          echo 'let a="",c="",r="",cw="",iw="",rw="",cl="";' >> fix.js
+          echo 'try{a=fs.readFileSync(".github/agents/devops-sre.md","utf8")}catch(e){}' >> fix.js
+          echo 'try{c=fs.readFileSync("Cargo.toml","utf8")}catch(e){}' >> fix.js
+          echo 'try{r=fs.readFileSync("README.md","utf8")}catch(e){}' >> fix.js
+          echo 'try{cw=fs.readFileSync(".github/workflows/cicd-devops-loop.yml","utf8")}catch(e){}' >> fix.js
+          echo 'try{iw=fs.readFileSync(".github/workflows/issue-resolver.yml","utf8")}catch(e){}' >> fix.js
+          echo 'try{rw=fs.readFileSync(".github/workflows/release-sync.yml","utf8")}catch(e){}' >> fix.js
+          echo 'try{cl=fs.readFileSync(".github/workflows/issue-cleanup.yml","utf8")}catch(e){}' >> fix.js
+          echo 'const um="[ISSUE]:\\n"+ib+"\\n\\n[COMMENT]:\\n"+cb+"\\n\\nDiagnose and fix the issue.";' >> fix.js
+          echo 'const sp="Expert Rust/DevOps engineer. Fix issues. Response MUST be raw code only: Rust starts with use/fn, YAML starts with name:. NO text, NO markdown.";' >> fix.js
+          echo 'const p=JSON.stringify({model:"minimax-m2.7:cloud",stream:false,messages:[{role:"system",content:sp},{role:"user",content:um}]});' >> fix.js
+          echo 'fs.writeFileSync("payload.json",p);' >> fix.js
 
           node fix.js
 
