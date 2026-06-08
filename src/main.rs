@@ -3,128 +3,120 @@ use std::process::exit;
 
 #[cfg(target_os = "macos")]
 mod clipboard {
-    use std::process::Command;
+    use std::ffi::CString;
+    use std::os::raw::c_char;
+    use std::ptr;
 
-    pub fn get() -> Option<String> {
-        let output = Command::new("pbpaste").output().ok()?;
-        if output.status.success() {
-            Some(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            None
-        }
+    #[link(name = "Carbon", kind = "framework")]
+    extern "C" {
+        fn SetPasteboardData(format: u32, data: *const u8, length: u32);
     }
 
-    pub fn set(text: &str) -> Option<()> {
-        let mut cmd = Command::new("pbcopy");
-        cmd.arg("-stdin").stdin(os_type::STDIN.clone()).ok()?;
-        let output = cmd.output().ok()?;
-        if output.status.success() {
-            Some(())
-        } else {
-            None
+    pub fn set_clipboard(text: &str) -> Result<(), String> {
+        let c_text = CString::new(text).map_err(|e| e.to_string())?;
+        let bytes = text.as_bytes();
+
+        unsafe {
+            SetPasteboardData(0, bytes.as_ptr(), bytes.len() as u32);
         }
+
+        Ok(())
     }
 }
 
 #[cfg(target_os = "linux")]
 mod clipboard {
-    use arboard::Clipboard;
-    use std::sync::Mutex;
+    pub fn set_clipboard(text: &str) -> Result<(), String> {
+        use std::process::Command;
 
-    static CLIPBOARD: Mutex<Option<Clipboard>> = Mutex::new(None);
+        let echo = Command::new("echo")
+            .arg("-n")
+            .arg(text)
+            .output()
+            .map_err(|e| e.to_string())?;
 
-    pub fn get() -> Option<String> {
-        let mut clipboard = CLIPBOARD.lock().ok()?;
-        if clipboard.is_none() {
-            *clipboard = Clipboard::new().ok();
-        }
-        if let Some(ref mut cb) = *clipboard {
-            cb.get_text().ok()
-        } else {
-            None
-        }
-    }
+        let xclip = Command::new("xclip")
+            .arg("-selection")
+            .arg("clipboard")
+            .stdin(echo.stdin.take().unwrap_or_else(|| {
+                panic!("Failed to capture stdin")
+            }))
+            .output()
+            .map_err(|e| e.to_string())?;
 
-    pub fn set(text: &str) -> Option<()> {
-        let mut clipboard = CLIPBOARD.lock().ok()?;
-        if clipboard.is_none() {
-            *clipboard = Clipboard::new().ok();
+        if !xclip.status.success() {
+            return Err(String::from_utf8_lossy(&xclip.stderr).to_string());
         }
-        if let Some(ref mut cb) = *clipboard {
-            cb.set_text(text).ok()
-        } else {
-            None
-        }
+
+        Ok(())
     }
 }
 
 #[cfg(target_os = "windows")]
 mod clipboard {
-    use std::process::Command;
+    use std::ptr;
 
-    pub fn get() -> Option<String> {
-        let output = Command::new("powershell")
-            .args(["-Command", "Get-Clipboard"])
-            .output()
-            .ok()?;
-        if output.status.success() {
-            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-        } else {
-            None
-        }
+    #[link(name = "user32")]
+    extern "system" {
+        fn OpenClipboard(hwnd: *mut std::ffi::c_void) -> i32;
+        fn CloseClipboard() -> i32;
+        fn EmptyClipboard() -> i32;
+        fn SetClipboardData(format: u32, data: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+        fn GlobalAlloc(flags: u32, bytes: usize) -> *mut std::ffi::c_void;
+        fn GlobalLock(mem: *mut std::ffi::c_void) -> *mut u8;
+        fn GlobalUnlock(mem: *mut std::ffi::c_void) -> i32;
     }
 
-    pub fn set(text: &str) -> Option<()> {
-        let output = Command::new("powershell")
-            .args(["-Command", &format!("Set-Clipboard -Value '{}'", text.replace("'", "''"))])
-            .output()
-            .ok()?;
-        if output.status.success() {
-            Some(())
-        } else {
-            None
+    pub fn set_clipboard(text: &str) -> Result<(), String> {
+        unsafe {
+            if OpenClipboard(ptr::null_mut()) == 0 {
+                return Err("Failed to open clipboard".to_string());
+            }
+
+            EmptyClipboard();
+
+            let size = text.len() * std::mem::size_of::<u16>();
+            let mem = GlobalAlloc(0x0002, size + 2);
+
+            if mem.is_null() {
+                CloseClipboard();
+                return Err("Failed to allocate memory".to_string());
+            }
+
+            let lock = GlobalLock(mem);
+            let wide: Vec<u16> = text.encode_utf16().collect();
+            std::ptr::copy_nonoverlapping(wide.as_ptr(), lock as *mut u16, wide.len());
+
+            GlobalUnlock(mem);
+
+            SetClipboardData(13, mem);
+            CloseClipboard();
         }
+
+        Ok(())
     }
+}
+
+fn get_env_or_default(key: &str, default: &str) -> String {
+    env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        eprintln!("Usage: akclip [get|set <text>]");
+        eprintln!("Usage: {} <text>", args[0]);
         exit(1);
     }
 
-    let subcommand = &args[1];
+    let text = &args[1];
 
-    match subcommand.as_str() {
-        "get" => {
-            match clipboard::get() {
-                Some(text) => println!("{}", text),
-                None => {
-                    eprintln!("Failed to get clipboard content");
-                    exit(1);
-                }
-            }
-        }
-        "set" => {
-            if args.len() < 3 {
-                eprintln!("Usage: akclip set <text>");
-                exit(1);
-            }
-            let text = &args[2];
-            match clipboard::set(text) {
-                Some(()) => println!("Clipboard set successfully"),
-                None => {
-                    eprintln!("Failed to set clipboard content");
-                    exit(1);
-                }
-            }
-        }
-        _ => {
-            eprintln!("Unknown subcommand: {}", subcommand);
-            eprintln!("Usage: akclip [get|set <text>]");
-            exit(1);
-        }
+    let result = clipboard::set_clipboard(text);
+
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        exit(1);
     }
+
+    println!("Clipboard set to: {}", text);
 }
