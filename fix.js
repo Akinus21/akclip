@@ -1,7 +1,10 @@
 const fs = require("fs");
 const src = fs.readFileSync("src/main.rs", "utf8");
-const issue = fs.readFileSync(".issue_body_tmp", "utf8");
-const comment = fs.readFileSync(".comment_body_tmp", "utf8");
+// Base64 decode the issue and comment body files
+const issueBuf = fs.readFileSync(".issue_body_tmp");
+const commentBuf = fs.readFileSync(".comment_body_tmp");
+const issue = Buffer.from(issueBuf, 'base64').toString('utf8');
+const comment = Buffer.from(commentBuf, 'base64').toString('utf8');
 const error = fs.existsSync(".build_error.txt") ? fs.readFileSync(".build_error.txt", "utf8") : "No build errors";
 const history = fs.existsSync(".iteration_history.txt") ? fs.readFileSync(".iteration_history.txt", "utf8") : "";
 const firstLine = src.split("\n")[0];
