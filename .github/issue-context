@@ -1,27 +1,14 @@
-/fix
-
-still having the install issue
-
-~/Downloads
-❯ brew update && brew install akclip
-==> Updating Homebrew...
-Updated 2 taps (akinus21/tap and homebrew/core).
-==> New Formulae
-wl-clipboard: Command-line copy/paste utilities for Wayland
-==> Outdated Formulae
-libnghttp3
-
-You have 1 outdated formula installed.
-You can upgrade it with brew upgrade
-or list it with brew outdated.
+❯ brew install akclip
 Inspect the formula dependency plan before installing with brew install --ask.
 Enable ask mode by setting HOMEBREW_ASK=1.
 Hide these hints with HOMEBREW_NO_ENV_HINTS=1 (see man brew).
 ==> Fetching downloads for: akclip
-✔︎ Formula akclip (v0.0.31) Verified 148.0KB/148.0KB
+✔︎ Formula akclip (v0.0.60) Verified 172.1KB/172.1KB
 ==> Installing akclip from akinus21/tap
 Error: An exception occurred within a child process:
 Errno::ENOENT: No such file or directory - akclip/target/release/akclip
 
-~/Downloads
+~
 ❯
+
+/fix this please
