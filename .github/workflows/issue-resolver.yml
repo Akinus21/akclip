@@ -20,9 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       issue_num: ${{ steps.issue_info.outputs.ISSUE_NUM }}
-      pr_num: ${{ steps.issue_info.outputs.PR_NUM }}
       branch_name: ${{ steps.branch_setup.outputs.BRANCH_NAME }}
-      build_success: ${{ steps.build_verify.outputs.BUILD_SUCCESS }}
+      build_success: ${{ steps.send_to_opencode.outputs.BUILD_SUCCESS }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -44,7 +43,6 @@ jobs:
             echo "Triggered by push to $CURRENT_BRANCH, extracted issue #$ISSUE_NUM"
             echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
 
-            # Load previous issue context from .github/issue-context if exists
             if [ -f .github/issue-context ]; then
               echo "Loading previous issue context..."
               cp .github/issue-context .issue_body_tmp
@@ -52,7 +50,6 @@ jobs:
               printf '' > .issue_body_tmp
             fi
 
-            # Include build error from previous iteration
             if [ -f .build_error.txt ]; then
               echo "Including build error from previous iteration..."
               printf '\n[BUILD ERROR FROM PREVIOUS ITERATION]\n' >> .issue_body_tmp
@@ -89,7 +86,6 @@ jobs:
 
           CURRENT_BRANCH=$(git branch --show-current)
 
-          # If we're already on the correct issue branch (from push trigger), skip creation
           if [ "$CURRENT_BRANCH" = "$BRANCH_NAME" ]; then
             echo "Already on branch $BRANCH_NAME, pulling latest..."
             git pull origin $BRANCH_NAME --rebase || true
@@ -103,7 +99,6 @@ jobs:
             git checkout -b $BRANCH_NAME origin/devops
             mkdir -p .github
             echo "$ISSUE_NUM" > .github/issue-number
-            # Save issue context for future iterations
             ISSUE_BODY_STR="${{ steps.issue_info.outputs.ISSUE_BODY }}"
             if [ -n "$ISSUE_BODY_STR" ]; then
               echo "$ISSUE_BODY_STR" > .github/issue-context
@@ -113,247 +108,95 @@ jobs:
             git push -u origin $BRANCH_NAME
           fi
 
-      - name: Analyze and Fix Issue
+      - name: Send to OpenCode for Fix
+        id: send_to_opencode
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPO_SLUG: ${{ github.repository }}
           ISSUE_NUM: ${{ steps.issue_info.outputs.ISSUE_NUM }}
-          PR_NUM: ${{ steps.issue_info.outputs.PR_NUM }}
-          ISSUE_BODY: ${{ steps.issue_info.outputs.ISSUE_BODY }}
-          COMMENT_BODY: ${{ steps.issue_info.outputs.COMMENT_BODY }}
         run: |
           echo "Analyzing issue for autonomous fix..."
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Note: We don't pull from issue branch because it may have old workflow file
-          # The checkout already gives us the files from the issue branch
-
-          LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
-          echo "Analyzing issue for autonomous fix..."
-
           mkdir -p .git/info
-          echo "payload.json" >> .git/info/exclude
-          echo "response.txt" >> .git/info/exclude
-          echo "fix.js" >> .git/info/exclude
-          echo "VALIDATION_FAILED" >> .git/info/exclude
           echo ".build_error.txt" >> .git/info/exclude
-          echo ".issue_context.txt" >> .git/info/exclude
           echo ".issue_body_tmp" >> .git/info/exclude
           echo ".comment_body_tmp" >> .git/info/exclude
-          echo ".iteration_history.txt" >> .git/info/exclude
 
-          # Files .issue_body_tmp and .comment_body_tmp are already created by issue_info step (base64 encoded)
-          # Run cargo check to see if there are errors
           set +e
           CARGO_OUTPUT=$(cargo check 2>&1)
           CARGO_EXIT=$?
           set -e
 
-          ITERATION_NUM=$(git log --oneline | grep -c "fix(issue#$ISSUE_NUM)" || echo 0)
-          echo "Iteration count: $ITERATION_NUM"
-
-          # Save iteration history
-          echo "[Iteration $ITERATION_NUM]" >> .iteration_history.txt
-          echo "Cargo exit: $CARGO_EXIT" >> .iteration_history.txt
+          BRANCH_NAME=$(git branch --show-current)
+          ISSUE_NUM=${{ steps.issue_info.outputs.ISSUE_NUM }}
+          REPO="${{ github.repository }}"
+          SHA="${{ github.sha }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
           if [ $CARGO_EXIT -ne 0 ]; then
-            echo "Build has errors. Extracting error context..."
+            echo "Build has errors. Sending webhook to OpenCode..."
             echo "$CARGO_OUTPUT" > .build_error.txt
-            echo "$CARGO_OUTPUT" | head -30 >> .iteration_history.txt
-            echo "---" >> .iteration_history.txt
 
-            # Extract error line number if available
-            ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE "error\[E[0-9]+\].*:.*:[0-9]+:[0-9]+" | head -1 || echo "")
-            if [ -z "$ERROR_LINE" ]; then
-              ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE -e '-->[^:]+:[0-9]+:[0-9]+' | head -1 || echo "")
-            fi
-            echo "Error location: $ERROR_LINE" >> .iteration_history.txt
-          fi
+            ISSUE_BODY=$(cat .issue_body_tmp 2>/dev/null | base64 -d || echo "")
+            COMMENT_BODY=$(cat .comment_body_tmp 2>/dev/null | base64 -d || echo "")
+            BUILD_ERROR=$(cat .build_error.txt 2>/dev/null || echo "")
 
-          # Copy detailed fix.js with comprehensive prompt
-          cp .github/scripts/fix.js fix.js
+            WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
 
-          node fix.js
+            jq -n \
+              --arg event "fix_request" \
+              --arg repo "$REPO" \
+              --arg branch "$BRANCH_NAME" \
+              --arg issue_num "$ISSUE_NUM" \
+              --arg issue_body "$ISSUE_BODY" \
+              --arg comment_body "$COMMENT_BODY" \
+              --arg build_error "$BUILD_ERROR" \
+              --arg sha "$SHA" \
+              --arg run_url "$RUN_URL" \
+              '{
+                event: $event,
+                repo: $repo,
+                branch: $branch,
+                issue_num: $issue_num,
+                issue_body: $issue_body,
+                comment_body: $comment_body,
+                build_error: $build_error,
+                sha: $sha,
+                run_url: $run_url
+              }' > /tmp/payload.json
 
-          echo "Sending issue to AI for diagnosis and fix..."
+            SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
 
-          RETRY_COUNT=0
-          SUCCESS=false
+            RETRY_COUNT=0
+            SUCCESS=false
 
-          while [ "$SUCCESS" = "false" ]; do
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "AI request attempt $RETRY_COUNT..."
+            while [ "$SUCCESS" = "false" ]; do
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
 
-            CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ollama" \
-              -H "User-Agent: GitHubActions-CI" \
-              -d @payload.json \
-              -w "\n%{http_code}" \
-              --connect-timeout 60 \
-              --max-time 300)
+              if curl -fsSL -X POST \
+                -H "Content-Type: application/json" \
+                -H "X-Webhook-Signature: $SIG" \
+                --data-binary @/tmp/payload.json \
+                "$WEBHOOK_URL"; then
+                SUCCESS=true
+                echo "Webhook sent successfully, OpenCode will push fixes to $BRANCH_NAME"
+              else
+                echo "Webhook attempt $RETRY_COUNT failed, retrying in 5 seconds..."
+                sleep 5
+              fi
+            done
 
-            HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
-            CurlResponse=$(echo "$CurlResponse" | sed '$d')
-
-            if [ "$HTTP_CODE" = "200" ] && [ -n "$CurlResponse" ]; then
-              SUCCESS=true
-              echo "AI request successful on attempt $RETRY_COUNT"
-            else
-              echo "Attempt $RETRY_COUNT failed with HTTP $HTTP_CODE, retrying in 5 seconds..."
-              sleep 5
-            fi
-          done
-
-          echo "$CurlResponse" > response.txt
-
-          cat > parse.js << 'ENDPARSE'
-          const fs = require("fs");
-          try {
-            const rawInput = fs.readFileSync("response.txt", "utf8").trim();
-            let combinedContent = "";
-
-            if (rawInput.startsWith("data:")) {
-              const lines = rawInput.split("\n");
-              for (let line of lines) {
-                line = line.trim();
-                if (!line || line === "data: [DONE]") continue;
-                if (line.startsWith("data:")) {
-                  try {
-                    const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    if (parsedChunk.choices && parsedChunk.choices[0] && parsedChunk.choices[0].delta) {
-                      const delta = parsedChunk.choices[0].delta.content || "";
-                      combinedContent += delta;
-                    }
-                  } catch (err) {}
-                }
-              }
-            } else {
-              const data = JSON.parse(rawInput);
-              if (data.choices && data.choices[0] && data.choices[0].message) {
-                combinedContent = data.choices[0].message.content || "";
-              } else if (data.error) {
-                console.error("AI returned error:", data.error);
-                process.exit(1);
-              }
-            }
-
-            if (!combinedContent) {
-              console.error("Empty content stream received.");
-              process.exit(1);
-            }
-
-            let cleaned = combinedContent.trim();
-
-            const firstLine = cleaned.split('\n')[0].trim();
-            const validStartPatterns = ['use ', 'fn ', 'struct ', 'impl ', 'enum ', 'mod ', 'pub ', 'const ', 'let ', 'static ', 'trait ', 'type ', 'name:', 'on:', 'jobs:', 'steps:', 'env:', 'run:', 'uses:', 'if:', 'with:', 'permissions:', '<', '<?', '{', '['];
-            const isLikelyCode = validStartPatterns.some(p => firstLine.startsWith(p));
-            const explanationIndicators = ['Looking at', 'The issue', 'The problem', 'I think', 'I need to', 'Here is', 'This is', 'The code', 'error:', 'Error:'];
-            const hasExplanation = explanationIndicators.some(e => firstLine.startsWith(e));
-
-            if (!isLikelyCode || hasExplanation) {
-              console.error("INVALID RESPONSE: AI returned explanatory text instead of code");
-              fs.writeFileSync("VALIDATION_FAILED", "true");
-              process.exit(0);
-            }
-
-            if (cleaned.startsWith("```")) {
-              cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
-              cleaned = cleaned.replace(/```$/, "");
-            }
-
-            if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
-              console.log("DETECTED: Workflow file");
-              fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
-              fs.writeFileSync("detected_file.txt", "workflow");
-            } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
-              console.log("DETECTED: Rust source");
-              fs.writeFileSync("src/main.rs", cleaned);
-              fs.writeFileSync("detected_file.txt", "rust");
-            } else {
-              console.log("DETECTED: Defaulting to Rust");
-              fs.writeFileSync("src/main.rs", cleaned);
-              fs.writeFileSync("detected_file.txt", "rust");
-            }
-          } catch (e) {
-            console.error("Parse error:", e.message);
-            process.exit(1);
-          }
-          ENDPARSE
-
-          node parse.js
-
-          DETECTED_FILE=$(cat detected_file.txt)
-
-          if [ -f VALIDATION_FAILED ]; then
-            echo "Validation failed in previous run, pushing to trigger retry..."
-            rm -f VALIDATION_FAILED
-            git add -A
-            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): retry due to invalid AI response"
-            git push origin $(git branch --show-current)
             echo "NO_CHANGES=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          if git diff --quiet; then
-            echo "No changes needed. AI determined code is correct."
-            echo "NO_CHANGES=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          echo "NO_CHANGES=false" >> $GITHUB_OUTPUT
-          git add -A
-
-          if [ "$DETECTED_FILE" = "rust" ]; then
-            echo "Verifying Rust fix compiles..."
-            if cargo check 2>&1; then
-              echo "Build verified! Will create PR in build verification step."
-              git commit -m "fix(issue#$ISSUE_NUM): autonomously patched"
-            else
-              echo "Build failed. Will retry in build verification step."
-              git commit -m "fix(issue#$ISSUE_NUM): autonomously patched (build may need iteration)"
-            fi
+            echo "OpenCode notified. Waiting for fixes to be pushed to $BRANCH_NAME..."
           else
-            echo "Workflow fix detected."
-            git commit -m "fix(issue#$ISSUE_NUM): autonomously patched workflow"
-          fi
-
-          # Don't push here - build_verify step will handle push on failure
-          # On success, build_verify creates PR
-
-      - name: Build Verification
-        id: build_verify
-        run: |
-          echo "Running build to verify..."
-          BRANCH_NAME=$(git branch --show-current)
-          echo "Current branch: $BRANCH_NAME"
-
-          set +e
-          BUILD_OUTPUT=$(cargo check 2>&1)
-          BUILD_EXIT=$?
-          set -e
-
-          if [ $BUILD_EXIT -eq 0 ]; then
-            echo "Build check passed on $BRANCH_NAME!"
-            echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
+            echo "Build passes! No fix needed."
             rm -f .build_error.txt
-            # Don't push on success - let the PR creation handle it
-          else
-            echo "Build check failed. Saving error and pushing to trigger iteration..."
-            printf '%s\n' "$BUILD_OUTPUT" > .build_error.txt
-            printf '%s\n' "$BUILD_OUTPUT"
-            echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
-            # Save iteration history for AI context
-            echo "[Iteration $LOOP_COUNT]: Build failed with exit $BUILD_EXIT" >> .iteration_history.txt
-            echo "Error: $BUILD_OUTPUT" >> .iteration_history.txt
-            echo "---" >> .iteration_history.txt
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add -f .build_error.txt .iteration_history.txt
-            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch" || true
-            git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
+            echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
+            echo "NO_CHANGES=true" >> $GITHUB_OUTPUT
           fi
 
   create-pr:
@@ -374,7 +217,6 @@ jobs:
         run: |
           BRANCH_NAME=$(git branch --show-current)
 
-          # Check if PR already exists
           EXISTING_PR=$(gh pr list --head $BRANCH_NAME --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -n "$EXISTING_PR" ]; then
             echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME, skipping creation"
@@ -404,25 +246,3 @@ jobs:
               "Merge the PR to devops to trigger integration to main.")
             gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
           fi
-
-  respond-to-comment:
-    needs: resolve-issue
-    if: github.event_name == 'pull_request_review_comment'
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      PR_NUM: ${{ needs.resolve-issue.outputs.pr_num }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 0
-
-      - name: Respond to PR Comment
-        run: |
-          echo "Responding to PR comment..."
-
-          BRANCH_NAME=$(git branch --show-current)
-
-          gh pr comment $PR_NUM --body "Agent acknowledged your request on branch ${BRANCH_NAME}. Work is being processed."
