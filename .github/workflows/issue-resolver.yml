@@ -198,7 +198,7 @@ jobs:
             HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
             CurlResponse=$(echo "$CurlResponse" | sed '$d')
 
-            if [ "$HTTP_CODE" = "200" ] && (echo "$CurlResponse" | head -c1 | grep -q '{' || echo "$CurlResponse" | head -c1 | grep -q 'd'); then
+            if [ "$HTTP_CODE" = "200" ] && [ -n "$CurlResponse" ]; then
               SUCCESS=true
               echo "AI request successful on attempt $RETRY_COUNT"
             else
