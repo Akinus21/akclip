@@ -183,11 +183,17 @@ jobs:
           echo "VALIDATION_FAILED" >> .git/info/exclude
           echo ".build_error.txt" >> .git/info/exclude
           echo ".issue_context.txt" >> .git/info/exclude
+          echo ".issue_body_tmp" >> .git/info/exclude
+          echo ".comment_body_tmp" >> .git/info/exclude
+
+          # Save issue body to temp file (escaped for JS safety)
+          printf '%s' "$ISSUE_BODY" > .issue_body_tmp
+          printf '%s' "$COMMENT_BODY" > .comment_body_tmp
 
           cat > fix.js << 'ENDSCRIPT'
           const fs = require("fs");
-          const issueBody = (process.env.ISSUE_BODY || "").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
-          const commentBody = (process.env.COMMENT_BODY || "").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
+          const issueBody = fs.readFileSync(".issue_body_tmp", "utf8");
+          const commentBody = fs.readFileSync(".comment_body_tmp", "utf8");
           const mainRs = fs.readFileSync("src/main.rs", "utf8");
           let agentsMd = "";
           let cargoToml = "";
