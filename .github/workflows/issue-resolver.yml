@@ -2,14 +2,9 @@ name: Issue Resolver
 
 on:
   issues:
-    types: [opened, edited]
+    types: [opened]
   issue_comment:
-    types: [created, edited]
-  pull_request_review_comment:
-    types: [created, edited]
-  push:
-    branches:
-      - 'issue-*'
+    types: [created]
 
 permissions:
   contents: write
@@ -18,7 +13,7 @@ permissions:
 
 jobs:
   resolve-issue:
-    if: "!contains(github.event.comment.body, '/close') && github.actor != 'github-actions[bot]'"
+    if: "contains(github.event.issue.body, '/fix') || contains(github.event.comment.body, '/fix')"
     runs-on: ubuntu-latest
     outputs:
       issue_num: ${{ steps.issue_info.outputs.ISSUE_NUM }}
@@ -37,17 +32,10 @@ jobs:
 
       - name: Determine Issue Number
         id: issue_info
-        env:
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          COMMENT_BODY: ${{ github.event.comment.body }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           echo "Determining issue context..."
 
           if [ "${{ github.event_name }}" == "push" ]; then
-            # Extract issue number from branch name (issue-55 -> 55)
             CURRENT_BRANCH=$(git branch --show-current)
             ISSUE_NUM=$(echo "$CURRENT_BRANCH" | grep -oE '[0-9]+' || echo "0")
             echo "Triggered by push to $CURRENT_BRANCH, extracted issue #$ISSUE_NUM"
@@ -56,51 +44,29 @@ jobs:
             # Load previous issue context from .github/issue-context if exists
             if [ -f .github/issue-context ]; then
               echo "Loading previous issue context..."
-              ISSUE_BODY=$(cat .github/issue-context)
+              cp .github/issue-context .issue_body_tmp
             else
-              ISSUE_BODY=""
+              printf '' > .issue_body_tmp
             fi
 
             # Include build error from previous iteration
             if [ -f .build_error.txt ]; then
               echo "Including build error from previous iteration..."
-              printf '\n[BUILD ERROR FROM PREVIOUS ITERATION]\n' >> .issue_context.txt
-              head -30 .build_error.txt >> .issue_context.txt
-              ISSUE_BODY=$(cat .issue_context.txt)
+              printf '\n[BUILD ERROR FROM PREVIOUS ITERATION]\n' >> .issue_body_tmp
+              head -30 .build_error.txt >> .issue_body_tmp
             fi
 
-            echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
-            echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            echo "COMMENT_BODY=" >> $GITHUB_OUTPUT
+            printf '' > .comment_body_tmp
           elif [ "${{ github.event_name }}" == "issue_comment" ]; then
             echo "Triggered by issue comment"
             echo "ISSUE_NUM=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
-            echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
-            printf '%s' "$COMMENT_BODY" | base64 >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            printf '%s' "${{ github.event.issue.body }}" | base64 > .issue_body_tmp
+            printf '%s' "${{ github.event.comment.body }}" | base64 > .comment_body_tmp
           elif [ "${{ github.event_name }}" == "issues" ]; then
             echo "Triggered by issue"
             echo "ISSUE_NUM=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            echo "ISSUE_BODY<<EOF" >> $GITHUB_OUTPUT
-            echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            echo "COMMENT_BODY=" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
-            echo "Triggered by PR comment"
-            ISSUE_NUM=$(echo "$PR_BODY" | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
-            if [ -z "$ISSUE_NUM" ]; then
-              echo "No issue number found in PR body"
-              ISSUE_NUM="0"
-            fi
-            echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
-            echo "PR_NUM=$PR_NUMBER" >> $GITHUB_OUTPUT
-            echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
-            printf '%s' "$COMMENT_BODY" | base64 >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            printf '%s' "${{ github.event.issue.body }}" | base64 > .issue_body_tmp
+            printf '' > .comment_body_tmp
           fi
 
       - name: Setup Issue Branch
@@ -174,10 +140,7 @@ jobs:
           echo ".comment_body_tmp" >> .git/info/exclude
           echo ".iteration_history.txt" >> .git/info/exclude
 
-          # Save issue body to temp file (escaped for JS safety)
-          printf '%s' "$ISSUE_BODY" > .issue_body_tmp
-          echo "$COMMENT_BODY" | base64 -d > .comment_body_tmp
-
+          # Files .issue_body_tmp and .comment_body_tmp are already created by issue_info step (base64 encoded)
           # Run cargo check to see if there are errors
           set +e
           CARGO_OUTPUT=$(cargo check 2>&1)
