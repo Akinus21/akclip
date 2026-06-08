@@ -1,0 +1,72 @@
+[Iteration 0
+0]
+Cargo exit: 0
+[Iteration ]: Build failed with exit 101
+Error: [1m[92m    Checking[0m akclip v0.1.1 (/home/runner/work/akclip/akclip)
+[1m[91merror[E0425][0m[1m: cannot find function `exit` in this scope[0m
+  [1m[94m--> [0msrc/main.rs:59:17
+   [1m[94m|[0m
+[1m[94m59[0m [1m[94m|[0m                 exit(1);
+   [1m[94m|[0m                 [1m[91m^^^^[0m [1m[91mnot found in this scope[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider importing one of these functions
+   [1m[94m|[0m
+[1m[94m39[0m [92m+ [0m    [92muse crate::exit;[0m
+   [1m[94m|[0m
+[1m[94m39[0m [92m+ [0m    [92muse std::process::exit;[0m
+   [1m[94m|[0m
+
+[1m[91merror[E0425][0m[1m: cannot find function `exit` in this scope[0m
+  [1m[94m--> [0msrc/main.rs:76:17
+   [1m[94m|[0m
+[1m[94m76[0m [1m[94m|[0m                 exit(1);
+   [1m[94m|[0m                 [1m[91m^^^^[0m [1m[91mnot found in this scope[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider importing one of these functions
+   [1m[94m|[0m
+[1m[94m39[0m [92m+ [0m    [92muse crate::exit;[0m
+   [1m[94m|[0m
+[1m[94m39[0m [92m+ [0m    [92muse std::process::exit;[0m
+   [1m[94m|[0m
+
+[1mFor more information about this error, try `rustc --explain E0425`.[0m
+[1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 2 previous errors
+---
+[Iteration 1]
+Cargo exit: 101
+[1m[92m    Updating[0m crates.io index
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m adler2 v2.0.1
+[1m[92m  Downloaded[0m anstream v1.0.0
+[1m[92m  Downloaded[0m anstyle-parse v1.0.0
+[1m[92m  Downloaded[0m anstyle v1.0.14
+[1m[92m  Downloaded[0m colorchoice v1.0.5
+[1m[92m  Downloaded[0m byteorder-lite v0.1.0
+[1m[92m  Downloaded[0m aho-corasick v1.1.4
+[1m[92m  Downloaded[0m gethostname v1.1.0
+[1m[92m  Downloaded[0m bytemuck v1.25.0
+[1m[92m  Downloaded[0m errno v0.3.14
+[1m[92m  Downloaded[0m percent-encoding v2.3.2
+[1m[92m  Downloaded[0m utf8parse v0.2.2
+[1m[92m  Downloaded[0m anstyle-query v1.1.5
+[1m[92m  Downloaded[0m cfg-if v1.0.4
+[1m[92m  Downloaded[0m autocfg v1.5.1
+[1m[92m  Downloaded[0m scopeguard v1.2.0
+[1m[92m  Downloaded[0m quick-error v2.0.1
+[1m[92m  Downloaded[0m quote v1.0.45
+[1m[92m  Downloaded[0m is_terminal_polyfill v1.70.2
+[1m[92m  Downloaded[0m env_filter v1.0.1
+[1m[92m  Downloaded[0m lock_api v0.4.14
+[1m[92m  Downloaded[0m fdeflate v0.3.7
+[1m[92m  Downloaded[0m simd-adler32 v0.3.9
+[1m[92m  Downloaded[0m fax v0.2.7
+[1m[92m  Downloaded[0m weezl v0.1.12
+[1m[92m  Downloaded[0m crc32fast v1.5.0
+[1m[92m  Downloaded[0m zune-core v0.5.1
+[1m[92m  Downloaded[0m smallvec v1.15.1
+---
+Error location: --> [0msrc/main.rs:59:17
+[Iteration 2]
+Cargo exit: 0
+[Iteration 3]
+Cargo exit: 0
