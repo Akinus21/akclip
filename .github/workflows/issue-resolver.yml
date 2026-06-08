@@ -179,21 +179,13 @@ jobs:
 
           echo "Sending issue to AI for diagnosis and fix..."
 
-          CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ollama" \
-            -H "User-Agent: GitHubActions-CI" \
-            -d @payload.json \
-            -w "\n%{http_code}" \
-            --connect-timeout 60 \
-            --max-time 300)
+          RETRY_COUNT=0
+          SUCCESS=false
 
-          HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
-          CurlResponse=$(echo "$CurlResponse" | sed '$d')
+          while [ "$SUCCESS" = "false" ]; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "AI request attempt $RETRY_COUNT..."
 
-          if [ "$HTTP_CODE" != "200" ] || ( ! echo "$CurlResponse" | head -c1 | grep -q '{' && ! echo "$CurlResponse" | head -c1 | grep -q 'd' ); then
-            echo "AI request failed with HTTP $HTTP_CODE, trying fallback model..."
-            sed -i 's/"model": "minimax-m2.7:cloud"/"model": "minimax-m2.7"/' payload.json
             CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer ollama" \
@@ -202,13 +194,18 @@ jobs:
               -w "\n%{http_code}" \
               --connect-timeout 60 \
               --max-time 300)
+
             HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
             CurlResponse=$(echo "$CurlResponse" | sed '$d')
-            if [ "$HTTP_CODE" != "200" ] || ( ! echo "$CurlResponse" | head -c1 | grep -q '{' && ! echo "$CurlResponse" | head -c1 | grep -q 'd' ); then
-              echo "Fallback AI also failed. Both primary and fallback are unavailable."
-              exit 1
+
+            if [ "$HTTP_CODE" = "200" ] && (echo "$CurlResponse" | head -c1 | grep -q '{' || echo "$CurlResponse" | head -c1 | grep -q 'd'); then
+              SUCCESS=true
+              echo "AI request successful on attempt $RETRY_COUNT"
+            else
+              echo "Attempt $RETRY_COUNT failed with HTTP $HTTP_CODE, retrying in 5 seconds..."
+              sleep 5
             fi
-          fi
+          done
 
           echo "$CurlResponse" > response.txt
 
