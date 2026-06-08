@@ -1,161 +1,113 @@
 use std::env;
 use std::process::exit;
 use std::io::Read;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(target_os = "macos")]
-mod clipboard {
-    use std::process::{Command, Stdio};
+use std::process::Stdio as StdIO;
 
-    pub fn get() -> Option<String> {
-        let output = Command::new("pbpaste")
-            .output()
-            .ok()?;
-        Some(String::from_utf8_lossy(&output.stdout).into_owned())
+#[cfg(target_os = "macos")]
+fn get_clipboard() -> Result<String, String> {
+    let output = Command::new("pbpaste")
+        .output()
+        .map_err(|e| format!("Failed to execute pbpaste: {}", e))?;
+    if !output.status.success() {
+        return Err("pbpaste command failed".to_string());
     }
-
-    pub fn set(text: &str) -> bool {
-        let mut echo = Command::new("echo")
-            .arg(text.trim())
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn echo command");
-
-        if let Some(ref mut stdout) = echo.stdout {
-            let mut input = Vec::new();
-            stdout.read_to_end(&mut input).ok();
-
-            let result = Command::new("pbcopy")
-                .stdin(Stdio::piped())
-                .spawn();
-
-            if let Ok(mut pbcopy) = result {
-                if let Some(ref mut stdin) = pbcopy.stdin {
-                    use std::io::Write;
-                    stdin.write_all(&input).is_ok()
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
+    String::from_utf8(output.stdout)
+        .map_err(|e| format!("Failed to parse clipboard content: {}", e))
 }
 
-#[cfg(target_os = "linux")]
-mod clipboard {
-    use std::process::{Command, Stdio};
-    use std::io::Read;
-
-    pub fn get() -> Option<String> {
-        let mut cmd = Command::new("xclip")
-            .args(["-selection", "clipboard", "-o"])
-            .stdout(Stdio::piped())
-            .spawn()
-            .ok()?;
-
-        let mut output = String::new();
-        cmd.stdout.take().map(|mut s| s.read_to_string(&mut output).ok());
-        Some(output)
-    }
-
-    pub fn set(text: &str) -> bool {
-        let mut child = Command::new("xclip")
-            .args(["-selection", "clipboard", "-i"])
-            .stdin(Stdio::piped())
-            .spawn()
-            .ok();
-
-        if let Some(ref mut p) = child {
-            if let Some(ref mut stdin) = p.stdin {
-                use std::io::Write;
-                stdin.write_all(text.as_bytes()).is_ok()
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
+#[cfg(target_os = "macos")]
+fn set_clipboard(content: &str) -> Result<(), String> {
+    let mut echo = Command::new("pbcopy");
+    echo.stdin(Stdio::piped())
+        .arg(content)
+        .output()
+        .map_err(|e| format!("Failed to execute pbcopy: {}", e))?;
+    Ok(())
 }
 
-#[cfg(target_os = "windows")]
-mod clipboard {
-    use std::process::{Command, Stdio};
+#[cfg(not(target_os = "macos"))]
+fn get_clipboard() -> Result<String, String> {
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|e| format!("Failed to access clipboard: {}", e))?;
+    clipboard.get_text()
+        .map_err(|e| format!("Failed to get clipboard text: {}", e))
+}
 
-    pub fn get() -> Option<String> {
-        let output = Command::new("powershell")
-            .args(["-command", "Get-Clipboard"])
-            .stdout(Stdio::piped())
-            .output()
-            .ok()?;
+#[cfg(not(target_os = "macos"))]
+fn set_clipboard(content: &str) -> Result<(), String> {
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|e| format!("Failed to access clipboard: {}", e))?;
+    clipboard.set_text(content)
+        .map_err(|e| format!("Failed to set clipboard text: {}", e))?;
+    Ok(())
+}
 
-        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+fn parse_args() -> (bool, bool, Vec<String>) {
+    let args: Vec<String> = env::args().collect();
+    let mut clear = false;
+    let mut image = false;
+    let mut text_args: Vec<String> = Vec::new();
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-c" | "--clear" => {
+                clear = true;
+            }
+            "-i" | "--image" => {
+                image = true;
+            }
+            "-h" | "--help" => {
+                println!("Usage: akclip [OPTIONS] [TEXT]");
+                println!("");
+                println!("Options:");
+                println!("  -c, --clear    Clear the clipboard");
+                println!("  -i, --image    Handle image data");
+                println!("  -h, --help     Show this help message");
+                exit(0);
+            }
+            _ => {
+                text_args.push(args[i].clone());
+            }
+        }
+        i += 1;
     }
 
-    pub fn set(text: &str) -> bool {
-        let mut child = Command::new("powershell")
-            .args(["-command", "Set-Clipboard", "-Value"])
-            .arg(text)
-            .stdin(Stdio::piped())
-            .spawn()
-            .ok();
-
-        child.map(|mut c| c.wait().is_ok()).unwrap_or(false)
-    }
+    (clear, image, text_args)
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let (clear, _image, text_args) = parse_args();
 
-    if args.len() < 2 {
-        match clipboard::get() {
-            Some(content) => println!("{}", content),
-            None => {
-                eprintln!("Failed to read clipboard content");
-                exit(1);
-            }
+    if clear {
+        if let Err(e) = set_clipboard("") {
+            eprintln!("Error clearing clipboard: {}", e);
+            exit(1);
         }
+        println!("Clipboard cleared");
         return;
     }
 
-    let subcommand = &args[1];
-    match subcommand.as_str() {
-        "-g" | "--get" => {
-            match clipboard::get() {
-                Some(content) => println!("{}", content),
-                None => {
-                    eprintln!("Failed to read clipboard content");
-                    exit(1);
-                }
-            }
+    if !text_args.is_empty() {
+        let text = text_args.join(" ");
+        if let Err(e) = set_clipboard(&text) {
+            eprintln!("Error setting clipboard: {}", e);
+            exit(1);
         }
-        "-s" | "--set" => {
-            if args.len() < 3 {
-                eprintln!("Usage: akclip -s <text>");
-                exit(1);
-            }
-            let text = &args[2..].join(" ");
-            if clipboard::set(&text) {
-                println!("Text copied to clipboard");
-            } else {
-                eprintln!("Failed to write to clipboard");
-                exit(1);
-            }
+        println!("Set clipboard to: {}", text);
+        return;
+    }
+
+    match get_clipboard() {
+        Ok(content) => {
+            println!("{}", content);
         }
-        "-h" | "--help" => {
-            println!("akclip - A clipboard utility");
-            println!("Usage:");
-            println!("  akclip              Read from clipboard and print to stdout");
-            println!("  akclip -g           Get clipboard content (same as above)");
-            println!("  akclip -s <text>    Set clipboard content");
-            println!("  akclip -h           Show this help message");
-        }
-        _ => {
-            eprintln!("Unknown option: {}", subcommand);
-            eprintln!("Usage: akclip [-g|--get] [-s|--set <text>] [-h|--help]");
+        Err(e) => {
+            eprintln!("Error reading clipboard: {}", e);
             exit(1);
         }
     }

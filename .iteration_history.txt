@@ -122,3 +122,5 @@ Cargo exit: 101
 [1m[92m  Downloaded[0m weezl v0.1.12
 ---
 Error location: --> [0msrc/main.rs:41:25
+[Iteration 3]
+Cargo exit: 0
