@@ -75,3 +75,16 @@ Cargo exit: 0
 Cargo exit: 0
 [Iteration 1]
 Cargo exit: 0
+[Iteration ]: Build failed with exit 101
+Error: [1m[92m    Checking[0m akclip v0.1.1 (/home/runner/work/akclip/akclip)
+[1m[91merror[E0609][0m[1m: no field `stdin` on type `Output`[0m
+  [1m[94m--> [0msrc/main.rs:41:25
+   [1m[94m|[0m
+[1m[94m41[0m [1m[94m|[0m             .stdin(echo.stdin.take().unwrap_or_else(|| {
+   [1m[94m|[0m                         [1m[91m^^^^^[0m [1m[91munknown field[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: available fields are: `status`, `stdout`, `stderr`
+
+[1mFor more information about this error, try `rustc --explain E0609`.[0m
+[1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 1 previous error
+---
