@@ -96,21 +96,7 @@ jobs:
           git reset --hard HEAD
           git pull origin $BRANCH_NAME --rebase || true
 
-          LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
-          echo "Current autonomous remediation loop depth: $LOOP_COUNT"
-          if [ "$LOOP_COUNT" -ge 10 ]; then
-            echo "CRITICAL: Maximum iteration depth reached (10 attempts). AI failed to solve error."
-            LAST_COMMIT=$(git log -1 --pretty=format:'%H - %s')
-            ISSUE_BODY=$(printf '%s\n%s\n\n%s\n%s\n' \
-              "The DevOps agent attempted 10 iterations to fix the build but was unsuccessful. Manual intervention required." \
-              "Last commit with issue:" \
-              "${LAST_COMMIT}" \
-              "Please review and provide guidance.")
-            gh issue create \
-              --title "DevOps Failed: Unable to fix build after 10 iterations" \
-              --body "${ISSUE_BODY}"
-            exit 1
-          fi
+          
 
           COMPILER_LOGS=$(cat compiler_error.log 2>/dev/null || echo "Build/Workflow failed")
           WORKFLOW_FILE=$(cat .github/workflows/cicd-devops-loop.yml 2>/dev/null || echo "")
