@@ -5,6 +5,9 @@ on:
     types: [opened]
   issue_comment:
     types: [created]
+  push:
+    branches:
+      - 'issue-*'
 
 permissions:
   contents: write
@@ -124,7 +127,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          git pull origin $(git branch --show-current) --rebase || true
+          # Note: We don't pull from issue branch because it may have old workflow file
+          # The checkout already gives us the files from the issue branch
 
           LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
           echo "Current autonomous remediation loop depth: $LOOP_COUNT"
