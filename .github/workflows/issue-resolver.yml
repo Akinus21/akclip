@@ -162,19 +162,6 @@ jobs:
 
           LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
           echo "Current autonomous remediation loop depth: $LOOP_COUNT"
-          if [ "$LOOP_COUNT" -ge 10 ]; then
-            echo "CRITICAL: Maximum iteration depth reached (10 attempts)."
-            echo "Posting failure comment to existing issue..."
-            LOOP_HISTORY=$(git log -n 10 --oneline)
-            COMMENT_BODY=$(printf '%s\n%s\n%s\n\n%s\n' \
-              "## Automated Fix Failed" \
-              "The autonomous agent attempted 10 iterations to fix this issue but was unsuccessful. Manual intervention is required." \
-              "Loop history:" \
-              "${LOOP_HISTORY}")
-            gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
-            echo "::error::Issue resolver failed after 10 iterations"
-            exit 1
-          fi
 
           mkdir -p .git/info
           echo "payload.json" >> .git/info/exclude
@@ -185,10 +172,18 @@ jobs:
           echo ".issue_context.txt" >> .git/info/exclude
           echo ".issue_body_tmp" >> .git/info/exclude
           echo ".comment_body_tmp" >> .git/info/exclude
+          echo ".iteration_history.txt" >> .git/info/exclude
 
           # Save issue body to temp file (escaped for JS safety)
           printf '%s' "$ISSUE_BODY" > .issue_body_tmp
           printf '%s' "$COMMENT_BODY" > .comment_body_tmp
+
+          # Get iteration history from git log (last 5 iterations)
+          ITERATION_HISTORY=$(git log --oneline -n 5 | sed 's/^/  /')
+          BUILD_ERROR=""
+          if [ -f .build_error.txt ]; then
+            BUILD_ERROR=$(cat .build_error.txt | head -50)
+          fi
 
           # Write minimal fix.js using echo
           echo 'const fs=require("fs");' > fix.js
@@ -203,7 +198,9 @@ jobs:
           echo 'try{iw=fs.readFileSync(".github/workflows/issue-resolver.yml","utf8")}catch(e){}' >> fix.js
           echo 'try{rw=fs.readFileSync(".github/workflows/release-sync.yml","utf8")}catch(e){}' >> fix.js
           echo 'try{cl=fs.readFileSync(".github/workflows/issue-cleanup.yml","utf8")}catch(e){}' >> fix.js
-          echo 'const um="[ISSUE]:\\n"+ib+"\\n\\n[COMMENT]:\\n"+cb+"\\n\\nDiagnose and fix the issue.";' >> fix.js
+          echo 'const be=fs.existsSync(".build_error.txt")?fs.readFileSync(".build_error.txt","utf8"):"";' >> fix.js
+          echo 'const ih=fs.existsSync(".iteration_history.txt")?fs.readFileSync(".iteration_history.txt","utf8"):"";' >> fix.js
+          echo 'const um="[ISSUE]:\\n"+ib+"\\n\\n[COMMENT]:\\n"+cb+(be?"\\n\\n[BUILD_ERROR]:\\n"+be:"")+(ih?"\\n\\n[ITERATION_HISTORY]:\\n"+ih:"")+"\\n\\nDiagnose and fix the issue.";' >> fix.js
           echo 'const sp="Expert Rust/DevOps engineer. Fix issues. Response MUST be raw code only: Rust starts with use/fn, YAML starts with name:. NO text, NO markdown.";' >> fix.js
           echo 'const p=JSON.stringify({model:"minimax-m2.7:cloud",stream:false,messages:[{role:"system",content:sp},{role:"user",content:um}]});' >> fix.js
           echo 'fs.writeFileSync("payload.json",p);' >> fix.js
@@ -395,14 +392,22 @@ jobs:
             echo "Build check passed on $BRANCH_NAME!"
             echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
             rm -f .build_error.txt
+            # Save iteration context for next run
+            git log --oneline -n 1 > .iteration_history.txt
+            git add .iteration_history.txt
+            git commit -m "chore: update iteration context" || true
           else
             echo "Build check failed. Saving error and pushing to trigger iteration..."
             printf '%s\n' "$BUILD_OUTPUT" > .build_error.txt
             printf '%s\n' "$BUILD_OUTPUT"
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
+            # Save iteration history for AI context
+            echo "[Iteration $LOOP_COUNT]: Build failed with exit $BUILD_EXIT" >> .iteration_history.txt
+            echo "Error: $BUILD_OUTPUT" >> .iteration_history.txt
+            echo "---" >> .iteration_history.txt
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add .build_error.txt
+            git add .build_error.txt .iteration_history.txt
             git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch" || true
             git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
           fi
