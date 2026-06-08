@@ -97,35 +97,24 @@ jobs:
           COMPILER_LOGS=$(cat compiler_error.log 2>/dev/null || echo "Build/Workflow failed")
           REPO="${{ github.repository }}"
           SHA="${{ github.sha }}"
+          REF="${{ github.ref_name }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
 
-          echo "Build has errors. Sending webhook to OpenCode..."
+          printf -v MESSAGE 'The %s build in the %s branch failed with the following errors:\n\n%s\n' \
+            "$REPO" "$REF" "$COMPILER_LOGS"
 
           jq -n \
-            --arg event "fix_request" \
+            --arg event "build_failure" \
             --arg repo "$REPO" \
-            --arg branch "$BRANCH_NAME" \
-            --arg issue_num "devops" \
-            --arg issue_body "DevOps build failure on $BRANCH_NAME" \
-            --arg comment_body "" \
-            --arg build_error "$COMPILER_LOGS" \
-            --arg sha "$SHA" \
             --arg run_url "$RUN_URL" \
-            '{
-              event: $event,
-              repo: $repo,
-              branch: $branch,
-              issue_num: $issue_num,
-              issue_body: $issue_body,
-              comment_body: $comment_body,
-              build_error: $build_error,
-              sha: $sha,
-              run_url: $run_url
-            }' > /tmp/payload.json
+            --arg sha "$SHA" \
+            --arg ref "$REF" \
+            --arg error "$COMPILER_LOGS" \
+            --arg message "$MESSAGE" \
+            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,error:$error,message:$message}' > /tmp/payload.json
 
-          SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | sed 's/.* //')
-          SIG="sha256=$SIG"
+          SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
 
           RETRY_COUNT=0
           SUCCESS=false
@@ -136,8 +125,8 @@ jobs:
 
             if curl -fsSL -X POST \
               -H "Content-Type: application/json" \
+              -H "X-GitHub-Event: build_failure" \
               -H "X-Hub-Signature-256: $SIG" \
-              -H "X-GitHub-Event: fix_request" \
               --data-binary @/tmp/payload.json \
               "$WEBHOOK_URL"; then
               SUCCESS=true

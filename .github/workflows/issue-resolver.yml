@@ -156,44 +156,39 @@ jobs:
 
             WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
 
-            jq -n \
-              --arg event "fix_request" \
+jq -n \
+              --arg event "build_failure" \
               --arg repo "$REPO" \
-              --arg branch "$BRANCH_NAME" \
-              --arg issue_num "$ISSUE_NUM" \
-              --arg issue_body "$ISSUE_BODY" \
-              --arg comment_body "$COMMENT_BODY" \
-              --arg build_error "$BUILD_ERROR" \
-              --arg sha "$SHA" \
               --arg run_url "$RUN_URL" \
+              --arg sha "$SHA" \
+              --arg ref "$BRANCH_NAME" \
+              --arg error "$BUILD_ERROR" \
+              --arg message "Issue #$ISSUE_NUM: $ISSUE_BODY"$'\n\n'"Build Error: $BUILD_ERROR" \
               '{
-                event: $event,
-                repo: $repo,
-                branch: $branch,
-                issue_num: $issue_num,
-                issue_body: $issue_body,
-                comment_body: $comment_body,
-                build_error: $build_error,
-                sha: $sha,
-                run_url: $run_url
+                event:$event,
+                repo:$repo,
+                run_url:$run_url,
+                sha:$sha,
+                ref:$ref,
+                error:$error,
+                message:$message
               }' > /tmp/payload.json
 
-SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | sed 's/.* //')
-          SIG="sha256=$SIG"
+            SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
 
-          RETRY_COUNT=0
-          SUCCESS=false
+            RETRY_COUNT=0
+            SUCCESS=false
 
-          while [ "$SUCCESS" = "false" ]; do
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
+            while [ "$SUCCESS" = "false" ]; do
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
 
-            if curl -fsSL -X POST \
-              -H "Content-Type: application/json" \
-              -H "X-Hub-Signature-256: $SIG" \
-              -H "X-GitHub-Event: fix_request" \
-              --data-binary @/tmp/payload.json \
-              "$WEBHOOK_URL"; then
+              if curl -fsSL -X POST \
+                -H "Content-Type: application/json" \
+                -H "X-GitHub-Event: build_failure" \
+                -H "X-Hub-Signature-256: $SIG" \
+                --data-binary @/tmp/payload.json \
+                "$WEBHOOK_URL"; then
                 SUCCESS=true
                 echo "Webhook sent successfully, OpenCode will push fixes to $BRANCH_NAME"
               else
