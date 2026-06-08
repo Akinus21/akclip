@@ -3,122 +3,89 @@ use std::process::exit;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() > 1 {
-        let content = args[1..].join(" ");
-        match set_clipboard(&content) {
-            Ok(_) => {
-                println!("Copied to clipboard: {}", content);
+        match args[1].as_str() {
+            "--help" => {
+                println!("Usage: {} [OPTIONS]", args[0]);
+                println!("Options:");
+                println!("  --help    Show this help message");
+                println!("  --version Show version information");
                 exit(0);
             }
-            Err(e) => {
-                eprintln!("Failed to set clipboard: {}", e);
-                exit(1);
+            "--version" => {
+                println!("akclip v0.0.31");
+                exit(0);
+            }
+            _ => {
+                if args[1].starts_with('-') {
+                    eprintln!("Error: Unknown option: {}", args[1]);
+                    eprintln!("Run with --help for usage information");
+                    exit(1);
+                }
             }
         }
-    } else {
-        match get_clipboard() {
-            Ok(content) => {
-                println!("{}", content);
-                exit(0);
-            }
-            Err(e) => {
-                eprintln!("Failed to get clipboard: {}", e);
-                exit(1);
-            }
+    }
+
+    if args.len() < 2 {
+        eprintln!("Error: Missing required argument");
+        eprintln!("Usage: {} <text>", args[0]);
+        eprintln!("Run with --help for more information");
+        exit(1);
+    }
+
+    let input_text = &args[1];
+    let result = transform_text(input_text);
+
+    match result {
+        Ok(output) => {
+            println!("{}", output);
+            exit(0);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            exit(1);
         }
     }
 }
 
-fn get_clipboard() -> Result<String, String> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        let output = Command::new("pbpaste")
-            .output()
-            .map_err(|e| format!("Failed to execute pbpaste: {}", e))?;
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+fn transform_text(text: &str) -> Result<String, String> {
+    if text.is_empty() {
+        return Err("Input text cannot be empty".to_string());
     }
-    
-    #[cfg(target_os = "linux")]
-    {
-        use std::process::Command;
-        let output = Command::new("xclip")
-            .args(&["-selection", "clipboard", "-o"])
-            .output()
-            .map_err(|e| format!("Failed to execute xclip: {}", e))?;
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+
+    let mut result = String::new();
+    for (i, c) in text.chars().enumerate() {
+        if i > 0 {
+            result.push('-');
+        }
+        result.push(c);
     }
-    
-    #[cfg(target_os = "windows")]
-    {
-        use std::process::Command;
-        let output = Command::new("powershell")
-            .args(&["-Command", "Get-Clipboard"])
-            .output()
-            .map_err(|e| format!("Failed to execute Get-Clipboard: {}", e))?;
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    }
-    
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    {
-        Err("Unsupported platform".to_string())
-    }
+
+    Ok(result)
 }
 
-fn set_clipboard(content: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        let mut child = Command::new("pbcopy")
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn pbcopy: {}", e))?;
-        
-        use std::io::Write;
-        if let Some(ref mut stdin) = child.stdin {
-            stdin.write_all(content.as_bytes())
-                .map_err(|e| format!("Failed to write to pbcopy: {}", e))?;
-        }
-        
-        child.wait()
-            .map_err(|e| format!("Failed to wait for pbcopy: {}", e))?;
-        Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transform_text_simple() {
+        let result = transform_text("hello");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "h-e-l-l-o");
     }
-    
-    #[cfg(target_os = "linux")]
-    {
-        use std::process::Command;
-        let mut child = Command::new("xclip")
-            .args(&["-selection", "clipboard"])
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn xclip: {}", e))?;
-        
-        use std::io::Write;
-        if let Some(ref mut stdin) = child.stdin {
-            stdin.write_all(content.as_bytes())
-                .map_err(|e| format!("Failed to write to xclip: {}", e))?;
-        }
-        
-        child.wait()
-            .map_err(|e| format!("Failed to wait for xclip: {}", e))?;
-        Ok(())
+
+    #[test]
+    fn test_transform_text_empty() {
+        let result = transform_text("");
+        assert!(result.is_err());
     }
-    
-    #[cfg(target_os = "windows")]
-    {
-        use std::process::Command;
-        let ps_command = format!("Set-Clipboard -Value '{}'", content.replace("'", "''"));
-        Command::new("powershell")
-            .args(&["-Command", &ps_command])
-            .output()
-            .map_err(|e| format!("Failed to execute Set-Clipboard: {}", e))?;
-        Ok(())
-    }
-    
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    {
-        Err("Unsupported platform".to_string())
+
+    #[test]
+    fn test_transform_text_single_char() {
+        let result = transform_text("a");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "a");
     }
 }
