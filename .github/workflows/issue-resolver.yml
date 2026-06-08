@@ -263,11 +263,81 @@ jobs:
             fi
           fi
 
-          echo "$CurlResponse" > response.txt
+echo "$CurlResponse" > response.txt
 
-          # Write parse.js using echo to avoid heredoc issues
-          echo 'const fs=require("fs");' > parse.js
-          echo 'try{const r=fs.readFileSync("response.txt","utf8").trim();let c="";if(r.startsWith("data:")){r.split("\n").forEach(l=>{l=l.trim();if(l&&l==="data: [DONE]")return;if(l.startsWith("data:")){try{const p=JSON.parse(l.replace(/^data:\s*/,""));if(p.choices&&p.choices[0]&&p.choices[0].delta){c+=p.choices[0].delta.content||""}}catch(e){}}})}}else{const d=JSON.parse(r);if(d.choices&&d.choices[0]&&d.choices[0].message){c=d.choices[0].message.content||""}else if(d.error){console.error("AI error:",d.error);process.exit(1)}}}if(!c){console.error("Empty response");process.exit(1)}let cl=c.trim();const fl=cl.split("\n")[0].trim();const v=["use ","fn ","struct ","impl ","enum ","mod ","pub ","const ","let ","static ","trait ","type ","name:","on:","jobs:","steps:","env:","run:","uses:","if:","with:","permissions:","<","<?","{","["];const isCode=v.some(p=>fl.startsWith(p));const bad=["Looking at","The issue","The problem","I think","I need to","Here is","This is","The code","error:","Error:"];const isBad=bad.some(e=>fl.startsWith(e));if(!isCode||isBad){console.error("Invalid response:",fl.substring(0,100));fs.writeFileSync("VALIDATION_FAILED","true");process.exit(0)}if(cl.startsWith("\`\`\`")){cl=cl.replace(/^\`\`\`[a-zA-Z]*\n?/,"");cl=cl.replace(/\`\`\`$/,"")}if(fl.startsWith("name:")&&cl.includes("on:")&&cl.includes("jobs:")){console.log("Workflow fix");fs.writeFileSync(".github/workflows/cicd-devops-loop.yml",cl);fs.writeFileSync("detected_file.txt","workflow")}else if(fl.startsWith("use ")||fl.startsWith("fn ")||fl.startsWith("struct ")||fl.startsWith("impl ")||fl.startsWith("const ")||fl.startsWith("let ")||fl.startsWith("pub ")||fl.startsWith("mod ")||fl.startsWith("static ")||fl.startsWith("enum ")||fl.startsWith("trait ")||fl.startsWith("type ")){console.log("Rust fix");fs.writeFileSync("src/main.rs",cl);fs.writeFileSync("detected_file.txt","rust")}else{console.error("Unknown type:",fl.substring(0,50));fs.writeFileSync("VALIDATION_FAILED","true");process.exit(0)}}catch(e){console.error("Parse error:",e.message);process.exit(1)}' >> parse.js
+          cat > parse.js << 'ENDPARSE'
+          const fs = require("fs");
+          try {
+            const rawInput = fs.readFileSync("response.txt", "utf8").trim();
+            let combinedContent = "";
+
+            if (rawInput.startsWith("data:")) {
+              const lines = rawInput.split("\n");
+              for (let line of lines) {
+                line = line.trim();
+                if (!line || line === "data: [DONE]") continue;
+                if (line.startsWith("data:")) {
+                  try {
+                    const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
+                    if (parsedChunk.choices && parsedChunk.choices[0] && parsedChunk.choices[0].delta) {
+                      const delta = parsedChunk.choices[0].delta.content || "";
+                      combinedContent += delta;
+                    }
+                  } catch (err) {}
+                }
+              }
+            } else {
+              const data = JSON.parse(rawInput);
+              if (data.choices && data.choices[0] && data.choices[0].message) {
+                combinedContent = data.choices[0].message.content || "";
+              } else if (data.error) {
+                console.error("AI returned error:", data.error);
+                process.exit(1);
+              }
+            }
+
+            if (!combinedContent) {
+              console.error("Empty content stream received.");
+              process.exit(1);
+            }
+
+            let cleaned = combinedContent.trim();
+
+            const firstLine = cleaned.split('\n')[0].trim();
+            const validStartPatterns = ['use ', 'fn ', 'struct ', 'impl ', 'enum ', 'mod ', 'pub ', 'const ', 'let ', 'static ', 'trait ', 'type ', 'name:', 'on:', 'jobs:', 'steps:', 'env:', 'run:', 'uses:', 'if:', 'with:', 'permissions:', '<', '<?', '{', '['];
+            const isLikelyCode = validStartPatterns.some(p => firstLine.startsWith(p));
+            const explanationIndicators = ['Looking at', 'The issue', 'The problem', 'I think', 'I need to', 'Here is', 'This is', 'The code', 'error:', 'Error:'];
+            const hasExplanation = explanationIndicators.some(e => firstLine.startsWith(e));
+
+            if (!isLikelyCode || hasExplanation) {
+              console.error("INVALID RESPONSE: AI returned explanatory text instead of code");
+              fs.writeFileSync("VALIDATION_FAILED", "true");
+              process.exit(0);
+            }
+
+            if (cleaned.startsWith("```")) {
+              cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
+              cleaned = cleaned.replace(/```$/, "");
+            }
+
+            if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
+              console.log("DETECTED: Workflow file");
+              fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
+              fs.writeFileSync("detected_file.txt", "workflow");
+            } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
+              console.log("DETECTED: Rust source");
+              fs.writeFileSync("src/main.rs", cleaned);
+              fs.writeFileSync("detected_file.txt", "rust");
+            } else {
+              console.log("DETECTED: Defaulting to Rust");
+              fs.writeFileSync("src/main.rs", cleaned);
+              fs.writeFileSync("detected_file.txt", "rust");
+            }
+          } catch (e) {
+            console.error("Parse error:", e.message);
+            process.exit(1);
+          }
+          ENDPARSE
 
           node parse.js
 
