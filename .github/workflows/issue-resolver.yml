@@ -214,7 +214,7 @@ jobs:
           echo 'const history=fs.existsSync(".iteration_history.txt")?fs.readFileSync(".iteration_history.txt","utf8"):"";' >> fix.js
           echo 'const prompt="Issue: "+issue+"\\n\\nComment: "+comment+"\\n\\nBuild Error:\\n"+error+"\\n\\nCurrent code:\\n"+src+"\\n\\nIteration history:\\n"+history+"\\n\\nYou are fixing code. Return the COMPLETE updated src/main.rs file with your fix. Start with the exact first line: "+src.split("\\n")[0];' >> fix.js
           echo 'const sp="OpenCode: Fix Rust code. Return full updated file with fix. No markdown, no explanation. Start with the exact same first line as the original.";' >> fix.js
-echo 'const p=JSON.stringify({model:"minimax-m2.7:cloud",stream:false,messages:[{role:"system",content:sp},{role:"user",content:prompt}]});' >> fix.js
+          echo 'const p=JSON.stringify({model:"minimax-m2.7:cloud",stream:false,messages:[{role:"system",content:sp},{role:"user",content:prompt}]});' >> fix.js
 
           node fix.js
 
