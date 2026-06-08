@@ -131,7 +131,7 @@ jobs:
           # The checkout already gives us the files from the issue branch
 
           LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
-          echo "Current autonomous remediation loop depth: $LOOP_COUNT"
+          echo "Analyzing issue for autonomous fix..."
 
           mkdir -p .git/info
           echo "payload.json" >> .git/info/exclude
