@@ -89,11 +89,21 @@ jobs:
           if [ "$CURRENT_BRANCH" = "$BRANCH_NAME" ]; then
             echo "Already on branch $BRANCH_NAME, pulling latest..."
             git pull origin $BRANCH_NAME --rebase || true
+            echo "Updating workflow files from devops..."
+            git checkout origin/devops -- .github/workflows/
+            git add .github/workflows/
+            git commit -m "chore: update workflow files from devops" || true
+            git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
           elif git ls-remote --heads origin $BRANCH_NAME 2>/dev/null | grep -q "$BRANCH_NAME"; then
             echo "Branch exists, checking out..."
             git fetch origin $BRANCH_NAME
             git checkout $BRANCH_NAME
             git pull origin $BRANCH_NAME --rebase || true
+            echo "Updating workflow files from devops..."
+            git checkout origin/devops -- .github/workflows/
+            git add .github/workflows/
+            git commit -m "chore: update workflow files from devops" || true
+            git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
           else
             echo "Creating new branch: $BRANCH_NAME from devops"
             git checkout -b $BRANCH_NAME origin/devops
