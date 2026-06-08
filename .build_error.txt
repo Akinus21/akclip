@@ -1,95 +1,140 @@
-[1m[92m    Updating[0m crates.io index
-[1m[92m Downloading[0m crates ...
-[1m[92m  Downloaded[0m adler2 v2.0.1
-[1m[92m  Downloaded[0m anstyle-query v1.1.5
-[1m[92m  Downloaded[0m autocfg v1.5.1
-[1m[92m  Downloaded[0m anstyle-parse v1.0.0
-[1m[92m  Downloaded[0m percent-encoding v2.3.2
-[1m[92m  Downloaded[0m utf8parse v0.2.2
-[1m[92m  Downloaded[0m quick-error v2.0.1
-[1m[92m  Downloaded[0m errno v0.3.14
-[1m[92m  Downloaded[0m colorchoice v1.0.5
-[1m[92m  Downloaded[0m anstyle v1.0.14
-[1m[92m  Downloaded[0m lock_api v0.4.14
-[1m[92m  Downloaded[0m env_filter v1.0.1
-[1m[92m  Downloaded[0m scopeguard v1.2.0
-[1m[92m  Downloaded[0m anstream v1.0.0
-[1m[92m  Downloaded[0m is_terminal_polyfill v1.70.2
-[1m[92m  Downloaded[0m cfg-if v1.0.4
-[1m[92m  Downloaded[0m gethostname v1.1.0
-[1m[92m  Downloaded[0m byteorder-lite v0.1.0
-[1m[92m  Downloaded[0m bitflags v2.11.1
-[1m[92m  Downloaded[0m simd-adler32 v0.3.9
-[1m[92m  Downloaded[0m fax v0.2.7
-[1m[92m  Downloaded[0m arboard v3.6.1
-[1m[92m  Downloaded[0m quote v1.0.45
-[1m[92m  Downloaded[0m parking_lot_core v0.9.12
-[1m[92m  Downloaded[0m parking_lot v0.12.5
-[1m[92m  Downloaded[0m log v0.4.30
-[1m[92m  Downloaded[0m zune-core v0.5.1
-[1m[92m  Downloaded[0m weezl v0.1.12
-[1m[92m  Downloaded[0m num-traits v0.2.19
-[1m[92m  Downloaded[0m fdeflate v0.3.7
-[1m[92m  Downloaded[0m unicode-ident v1.0.24
-[1m[92m  Downloaded[0m miniz_oxide v0.8.9
-[1m[92m  Downloaded[0m smallvec v1.15.1
-[1m[92m  Downloaded[0m serde_core v1.0.228
-[1m[92m  Downloaded[0m proc-macro2 v1.0.106
-[1m[92m  Downloaded[0m half v2.7.1
-[1m[92m  Downloaded[0m zune-jpeg v0.5.15
-[1m[92m  Downloaded[0m tiff v0.11.3
-[1m[92m  Downloaded[0m flate2 v1.1.9
-[1m[92m  Downloaded[0m zerocopy-derive v0.8.50
-[1m[92m  Downloaded[0m memchr v2.8.1
-[1m[92m  Downloaded[0m png v0.18.1
-[1m[92m  Downloaded[0m regex v1.12.3
-[1m[92m  Downloaded[0m moxcms v0.8.1
-[1m[92m  Downloaded[0m aho-corasick v1.1.4
-[1m[92m  Downloaded[0m x11rb v0.13.2
-[1m[92m  Downloaded[0m bytemuck v1.25.0
-[1m[92m  Downloaded[0m crc32fast v1.5.0
-[1m[92m  Downloaded[0m env_logger v0.11.10
-[1m[92m  Downloaded[0m zerocopy v0.8.50
-[1m[92m  Downloaded[0m syn v2.0.117
-[1m[92m  Downloaded[0m image v0.25.10
-[1m[92m  Downloaded[0m regex-syntax v0.8.10
-[1m[92m  Downloaded[0m rustix v1.1.4
-[1m[92m  Downloaded[0m x11rb-protocol v0.13.2
-[1m[92m  Downloaded[0m regex-automata v0.4.14
-[1m[92m  Downloaded[0m jiff v0.2.28
-[1m[92m  Downloaded[0m libc v0.2.186
-[1m[92m  Downloaded[0m pxfm v0.1.29
-[1m[92m  Downloaded[0m linux-raw-sys v0.12.1
-[1m[92m   Compiling[0m num-traits v0.2.19
-[1m[92m   Compiling[0m crc32fast v1.5.0
-[1m[92m    Checking[0m aho-corasick v1.1.4
-[1m[92m    Checking[0m miniz_oxide v0.8.9
-[1m[92m   Compiling[0m libc v0.2.186
-[1m[92m    Checking[0m flate2 v1.1.9
-[1m[92m    Checking[0m fdeflate v0.3.7
-[1m[92m    Checking[0m regex-automata v0.4.14
-[1m[92m    Checking[0m moxcms v0.8.1
-[1m[92m    Checking[0m png v0.18.1
-[1m[92m    Checking[0m parking_lot_core v0.9.12
-[1m[92m    Checking[0m anstyle-parse v1.0.0
-[1m[92m    Checking[0m lock_api v0.4.14
-[1m[92m    Checking[0m gethostname v1.1.0
-[1m[92m    Checking[0m x11rb v0.13.2
-[1m[92m    Checking[0m anstream v1.0.0
-[1m[92m    Checking[0m parking_lot v0.12.5
-[1m[92m    Checking[0m regex v1.12.3
-[1m[92m    Checking[0m env_filter v1.0.1
-[1m[92m    Checking[0m env_logger v0.11.10
-[1m[92m    Checking[0m image v0.25.10
-[1m[92m    Checking[0m arboard v3.6.1
 [1m[92m    Checking[0m akclip v0.1.1 (/home/runner/work/akclip/akclip)
-[1m[91merror[E0609][0m[1m: no field `stdin` on type `Output`[0m
-  [1m[94m--> [0msrc/main.rs:41:25
-   [1m[94m|[0m
-[1m[94m41[0m [1m[94m|[0m             .stdin(echo.stdin.take().unwrap_or_else(|| {
-   [1m[94m|[0m                         [1m[91m^^^^^[0m [1m[91munknown field[0m
-   [1m[94m|[0m
-   [1m[94m= [0m[1mnote[0m: available fields are: `status`, `stdout`, `stderr`
+[1m[91merror[E0432][0m[1m: unresolved import `image`[0m
+   [1m[94m--> [0msrc/main.rs:152:9
+    [1m[94m|[0m
+[1m[94m152[0m [1m[94m|[0m     use image::{ImageBuffer, Rgba};
+    [1m[94m|[0m         [1m[91m^^^^^[0m [1m[91muse of unresolved module or unlinked crate `image`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mhelp[0m: if you wanted to use a crate named `image`, use `cargo add image` to add it to your `Cargo.toml`
 
-[1mFor more information about this error, try `rustc --explain E0609`.[0m
-[1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 1 previous error
+[1m[91merror[E0433][0m[1m: cannot find module or crate `image` in this scope[0m
+   [1m[94m--> [0msrc/main.rs:163:31
+    [1m[94m|[0m
+[1m[94m163[0m [1m[94m|[0m     img.write_to(&mut cursor, image::ImageFormat::Png)
+    [1m[94m|[0m                               [1m[91m^^^^^[0m [1m[91muse of unresolved module or unlinked crate `image`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mhelp[0m: if you wanted to use a crate named `image`, use `cargo add image` to add it to your `Cargo.toml`
+
+[1m[33mwarning[0m[1m: unused import: `Stdio`[0m
+ [1m[94m--> [0msrc/main.rs:4:29
+  [1m[94m|[0m
+[1m[94m4[0m [1m[94m|[0m use std::process::{Command, Stdio};
+  [1m[94m|[0m                             [1m[33m^^^^^[0m
+  [1m[94m|[0m
+  [1m[94m= [0m[1mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+[1m[33mwarning[0m[1m: unused imports: `AtomicBool` and `Ordering`[0m
+   [1m[94m--> [0msrc/main.rs:204:29
+    [1m[94m|[0m
+[1m[94m204[0m [1m[94m|[0m     use std::sync::atomic::{AtomicBool, Ordering};
+    [1m[94m|[0m                             [1m[33m^^^^^^^^^^[0m  [1m[33m^^^^^^^^[0m
+
+[1m[91merror[E0599][0m[1m: no method named `clone` found for struct `Atomic<T>` in the current scope[0m
+  [1m[94m--> [0msrc/main.rs:19:49
+   [1m[94m|[0m
+[1m[94m19[0m [1m[94m|[0m     let should_continue_clone = should_continue.clone();
+   [1m[94m|[0m                                                 [1m[91m^^^^^[0m [1m[91mmethod not found in `Atomic<bool>`[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+  [1m[94m--> [0msrc/main.rs:26:9
+   [1m[94m|[0m
+[1m[94m25[0m [1m[94m|[0m     let result = match command {
+   [1m[94m|[0m                        [1m[94m-------[0m [1m[94mthis expression has type `&String`[0m
+[1m[94m26[0m [1m[94m|[0m         "copy" | "c" => copy_to_clipboard(command_args),
+   [1m[94m|[0m         [1m[91m^^^^^^[0m [1m[91mexpected `&String`, found `&str`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: expected reference `[1m[35m&[0m[1m[35mString[0m`
+              found reference `[1m[35m&'static [0m[1m[35mstr[0m`
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+  [1m[94m--> [0msrc/main.rs:26:18
+   [1m[94m|[0m
+[1m[94m25[0m [1m[94m|[0m     let result = match command {
+   [1m[94m|[0m                        [1m[94m-------[0m [1m[94mthis expression has type `&String`[0m
+[1m[94m26[0m [1m[94m|[0m         "copy" | "c" => copy_to_clipboard(command_args),
+   [1m[94m|[0m                  [1m[91m^^^[0m [1m[91mexpected `&String`, found `&str`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: expected reference `[1m[35m&[0m[1m[35mString[0m`
+              found reference `[1m[35m&'static [0m[1m[35mstr[0m`
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+  [1m[94m--> [0msrc/main.rs:27:9
+   [1m[94m|[0m
+[1m[94m25[0m [1m[94m|[0m     let result = match command {
+   [1m[94m|[0m                        [1m[94m-------[0m [1m[94mthis expression has type `&String`[0m
+[1m[94m26[0m [1m[94m|[0m         "copy" | "c" => copy_to_clipboard(command_args),
+[1m[94m27[0m [1m[94m|[0m         "paste" | "p" => paste_from_clipboard(),
+   [1m[94m|[0m         [1m[91m^^^^^^^[0m [1m[91mexpected `&String`, found `&str`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: expected reference `[1m[35m&[0m[1m[35mString[0m`
+              found reference `[1m[35m&'static [0m[1m[35mstr[0m`
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+  [1m[94m--> [0msrc/main.rs:27:19
+   [1m[94m|[0m
+[1m[94m25[0m [1m[94m|[0m     let result = match command {
+   [1m[94m|[0m                        [1m[94m-------[0m [1m[94mthis expression has type `&String`[0m
+[1m[94m26[0m [1m[94m|[0m         "copy" | "c" => copy_to_clipboard(command_args),
+[1m[94m27[0m [1m[94m|[0m         "paste" | "p" => paste_from_clipboard(),
+   [1m[94m|[0m                   [1m[91m^^^[0m [1m[91mexpected `&String`, found `&str`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: expected reference `[1m[35m&[0m[1m[35mString[0m`
+              found reference `[1m[35m&'static [0m[1m[35mstr[0m`
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+  [1m[94m--> [0msrc/main.rs:28:9
+   [1m[94m|[0m
+[1m[94m25[0m [1m[94m|[0m     let result = match command {
+   [1m[94m|[0m                        [1m[94m-------[0m [1m[94mthis expression has type `&String`[0m
+[1m[94m...[0m
+[1m[94m28[0m [1m[94m|[0m         "image" | "i" => paste_image_from_clipboard(),
+   [1m[94m|[0m         [1m[91m^^^^^^^[0m [1m[91mexpected `&String`, found `&str`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: expected reference `[1m[35m&[0m[1m[35mString[0m`
+              found reference `[1m[35m&'static [0m[1m[35mstr[0m`
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+  [1m[94m--> [0msrc/main.rs:28:19
+   [1m[94m|[0m
+[1m[94m25[0m [1m[94m|[0m     let result = match command {
+   [1m[94m|[0m                        [1m[94m-------[0m [1m[94mthis expression has type `&String`[0m
+[1m[94m...[0m
+[1m[94m28[0m [1m[94m|[0m         "image" | "i" => paste_image_from_clipboard(),
+   [1m[94m|[0m                   [1m[91m^^^[0m [1m[91mexpected `&String`, found `&str`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: expected reference `[1m[35m&[0m[1m[35mString[0m`
+              found reference `[1m[35m&'static [0m[1m[35mstr[0m`
+
+[1m[91merror[E0615][0m[1m: attempted to take value of method `stdin` on type `Command`[0m
+   [1m[94m--> [0msrc/main.rs:111:55
+    [1m[94m|[0m
+[1m[94m111[0m [1m[94m|[0m [1m[94m...[0m                   if let Some(stdin) = echo.stdin.as_ref() {
+    [1m[94m|[0m                                                 [1m[91m^^^^^[0m [1m[91mmethod, not a field[0m
+    [1m[94m|[0m
+[1m[96mhelp[0m: use parentheses to call the method
+    [1m[94m|[0m
+[1m[94m111[0m [1m[94m| [0m                            if let Some(stdin) = echo.stdin[92m(_)[0m.as_ref() {
+    [1m[94m|[0m                                                            [92m+++[0m
+
+[1m[33mwarning[0m[1m: variable does not need to be mutable[0m
+   [1m[94m--> [0msrc/main.rs:216:17
+    [1m[94m|[0m
+[1m[94m216[0m [1m[94m|[0m             let mut bytes = [0u8; 1];
+    [1m[94m|[0m                 [1m[94m----[0m[1m[33m^^^^^[0m
+    [1m[94m|[0m                 [1m[94m|[0m
+    [1m[94m|[0m                 [1m[94mhelp: remove this `mut`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+[1m[33mwarning[0m[1m: unused variable: `bytes`[0m
+   [1m[94m--> [0msrc/main.rs:216:17
+    [1m[94m|[0m
+[1m[94m216[0m [1m[94m|[0m             let mut bytes = [0u8; 1];
+    [1m[94m|[0m                 [1m[33m^^^^^^^^^[0m [1m[33mhelp: if this is intentional, prefix it with an underscore: `_bytes`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+[1mSome errors have detailed explanations: E0308, E0432, E0433, E0599, E0615.[0m
+[1mFor more information about an error, try `rustc --explain E0308`.[0m
+[1m[33mwarning[0m: `akclip` (bin "akclip") generated 4 warnings
+[1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 10 previous errors; 4 warnings emitted
