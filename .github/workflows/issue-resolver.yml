@@ -178,32 +178,43 @@ jobs:
           printf '%s' "$ISSUE_BODY" > .issue_body_tmp
           printf '%s' "$COMMENT_BODY" > .comment_body_tmp
 
-          # Get iteration history from git log (last 5 iterations)
-          ITERATION_HISTORY=$(git log --oneline -n 5 | sed 's/^/  /')
-          BUILD_ERROR=""
-          if [ -f .build_error.txt ]; then
-            BUILD_ERROR=$(cat .build_error.txt | head -50)
+          # Run cargo check to see if there are errors
+          set +e
+          CARGO_OUTPUT=$(cargo check 2>&1)
+          CARGO_EXIT=$?
+          set -e
+
+          ITERATION_NUM=$(git log --oneline | grep -c "fix(issue#$ISSUE_NUM)" || echo 0)
+          echo "Iteration count: $ITERATION_NUM"
+
+          # Save iteration history
+          echo "[Iteration $ITERATION_NUM]" >> .iteration_history.txt
+          echo "Cargo exit: $CARGO_EXIT" >> .iteration_history.txt
+
+          if [ $CARGO_EXIT -ne 0 ]; then
+            echo "Build has errors. Extracting error context..."
+            echo "$CARGO_OUTPUT" > .build_error.txt
+            echo "$CARGO_OUTPUT" | head -30 >> .iteration_history.txt
+            echo "---" >> .iteration_history.txt
+
+            # Extract error line number if available
+            ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE "error\[E[0-9]+\].*:.*:[0-9]+:[0-9]+" | head -1 || echo "")
+            if [ -z "$ERROR_LINE" ]; then
+              ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE "-->[^:]+:[0-9]+:[0-9]+" | head -1 || echo "")
+            fi
+            echo "Error location: $ERROR_LINE" >> .iteration_history.txt
           fi
 
-          # Write minimal fix.js using echo
+          # Write targeted fix prompt
           echo 'const fs=require("fs");' > fix.js
-          echo 'const ib=fs.readFileSync(".issue_body_tmp","utf8");' >> fix.js
-          echo 'const cb=fs.readFileSync(".comment_body_tmp","utf8");' >> fix.js
-          echo 'const mr=fs.readFileSync("src/main.rs","utf8");' >> fix.js
-          echo 'let a="",c="",r="",cw="",iw="",rw="",cl="";' >> fix.js
-          echo 'try{a=fs.readFileSync(".github/agents/devops-sre.md","utf8")}catch(e){}' >> fix.js
-          echo 'try{c=fs.readFileSync("Cargo.toml","utf8")}catch(e){}' >> fix.js
-          echo 'try{r=fs.readFileSync("README.md","utf8")}catch(e){}' >> fix.js
-          echo 'try{cw=fs.readFileSync(".github/workflows/cicd-devops-loop.yml","utf8")}catch(e){}' >> fix.js
-          echo 'try{iw=fs.readFileSync(".github/workflows/issue-resolver.yml","utf8")}catch(e){}' >> fix.js
-          echo 'try{rw=fs.readFileSync(".github/workflows/release-sync.yml","utf8")}catch(e){}' >> fix.js
-          echo 'try{cl=fs.readFileSync(".github/workflows/issue-cleanup.yml","utf8")}catch(e){}' >> fix.js
-          echo 'const be=fs.existsSync(".build_error.txt")?fs.readFileSync(".build_error.txt","utf8"):"";' >> fix.js
-          echo 'const ih=fs.existsSync(".iteration_history.txt")?fs.readFileSync(".iteration_history.txt","utf8"):"";' >> fix.js
-          echo 'const um="[ISSUE]:\\n"+ib+"\\n\\n[COMMENT]:\\n"+cb+(be?"\\n\\n[BUILD_ERROR]:\\n"+be:"")+(ih?"\\n\\n[ITERATION_HISTORY]:\\n"+ih:"")+"\\n\\nDiagnose and fix the issue.";' >> fix.js
-          echo 'const sp="Expert Rust/DevOps engineer. Fix issues. Response MUST be raw code only: Rust starts with use/fn, YAML starts with name:. NO text, NO markdown.";' >> fix.js
-          echo 'const p=JSON.stringify({model:"minimax-m2.7:cloud",stream:false,messages:[{role:"system",content:sp},{role:"user",content:um}]});' >> fix.js
-          echo 'fs.writeFileSync("payload.json",p);' >> fix.js
+          echo 'const src=fs.readFileSync("src/main.rs","utf8");' >> fix.js
+          echo 'const issue=fs.readFileSync(".issue_body_tmp","utf8");' >> fix.js
+          echo 'const comment=fs.readFileSync(".comment_body_tmp","utf8");' >> fix.js
+          echo 'const error=fs.existsSync(".build_error.txt")?fs.readFileSync(".build_error.txt","utf8"):"No build errors";' >> fix.js
+          echo 'const history=fs.existsSync(".iteration_history.txt")?fs.readFileSync(".iteration_history.txt","utf8"):"";' >> fix.js
+          echo 'const prompt="Issue: "+issue+"\\n\\nComment: "+comment+"\\n\\nBuild Error:\\n"+error+"\\n\\nCurrent code:\\n"+src+"\\n\\nIteration history:\\n"+history+"\\n\\nYou are fixing code. Return the COMPLETE updated src/main.rs file with your fix. Start with the exact first line: "+src.split("\\n")[0];' >> fix.js
+          echo 'const sp="OpenCode: Fix Rust code. Return full updated file with fix. No markdown, no explanation. Start with the exact same first line as the original.";' >> fix.js
+echo 'const p=JSON.stringify({model:"minimax-m2.7:cloud",stream:false,messages:[{role:"system",content:sp},{role:"user",content:prompt}]});' >> fix.js
 
           node fix.js
 
