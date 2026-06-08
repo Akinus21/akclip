@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   resolve-issue:
-    if: "contains(github.event.issue.body, '/fix') || contains(github.event.comment.body, '/fix')"
+    if: "github.event_name == 'push' || contains(github.event.issue.body, '/fix') || contains(github.event.comment.body, '/fix')"
     runs-on: ubuntu-latest
     outputs:
       issue_num: ${{ steps.issue_info.outputs.ISSUE_NUM }}
