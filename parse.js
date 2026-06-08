@@ -34,22 +34,38 @@ try {
   }
 
   let cleaned = combinedContent.trim();
+
+  const firstLine = cleaned.split('\n')[0].trim();
+  const validStartPatterns = ['use ', 'fn ', 'struct ', 'impl ', 'enum ', 'mod ', 'pub ', 'const ', 'let ', 'static ', 'trait ', 'type ', 'name:', 'on:', 'jobs:', 'steps:', 'env:', 'run:', 'uses:', 'if:', 'with:', 'permissions:', '<', '<?', '{', '['];
+  const isLikelyCode = validStartPatterns.some(p => firstLine.startsWith(p));
+  const explanationIndicators = ['Looking at', 'The issue', 'The problem', 'I think', 'I need to', 'Here is', 'This is', 'The code', 'error:', 'Error:'];
+  const hasExplanation = explanationIndicators.some(e => firstLine.startsWith(e));
+
+  if (!isLikelyCode || hasExplanation) {
+    console.error("INVALID RESPONSE: AI returned explanatory text instead of code");
+    fs.writeFileSync("VALIDATION_FAILED", "true");
+    process.exit(0);
+  }
+
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
     cleaned = cleaned.replace(/```$/, "");
   }
 
   if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
+    console.log("DETECTED: Workflow file");
     fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
-    console.log("Workflow file updated!");
+    fs.writeFileSync("detected_file.txt", "workflow");
   } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
+    console.log("DETECTED: Rust source");
     fs.writeFileSync("src/main.rs", cleaned);
-    console.log("Rust source file updated!");
+    fs.writeFileSync("detected_file.txt", "rust");
   } else {
+    console.log("DETECTED: Defaulting to Rust");
     fs.writeFileSync("src/main.rs", cleaned);
-    console.log("Defaulting to Rust source!");
+    fs.writeFileSync("detected_file.txt", "rust");
   }
 } catch (e) {
-  console.error("Failed processing response:", e.message);
+  console.error("Parse error:", e.message);
   process.exit(1);
 }
