@@ -263,7 +263,7 @@ jobs:
             fi
           fi
 
-echo "$CurlResponse" > response.txt
+          echo "$CurlResponse" > response.txt
 
           cat > parse.js << 'ENDPARSE'
           const fs = require("fs");
