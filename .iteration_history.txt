@@ -283,3 +283,17 @@ Cargo exit: 101
 [1m[92m  Downloaded[0m regex v1.12.3
 ---
 Error location: --> [0msrc/main.rs:16:5
+[Iteration ]: Build failed with exit 101
+Error: [1m[92m    Checking[0m akclip v0.1.1 (/home/runner/work/akclip/akclip)
+[1m[91merror[E0277][0m[1m: the trait bound `arboard::Clipboard: Clone` is not satisfied[0m
+  [1m[94m--> [0msrc/main.rs:16:5
+   [1m[94m|[0m
+[1m[94m14[0m [1m[94m|[0m #[derive(Clone)]
+   [1m[94m|[0m          [1m[94m-----[0m [1m[94min this derive macro expansion[0m
+[1m[94m15[0m [1m[94m|[0m pub struct ClipboardManager {
+[1m[94m16[0m [1m[94m|[0m     clipboard: Clipboard,
+   [1m[94m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^^^[0m [1m[91mthe trait `Clone` is not implemented for `arboard::Clipboard`[0m
+
+[1mFor more information about this error, try `rustc --explain E0277`.[0m
+[1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 1 previous error
+---
