@@ -1,151 +1,124 @@
 use std::env;
+use std::process::exit;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-
+    
     if args.len() > 1 {
-        let action = &args[1];
-        match action.as_str() {
-            "copy" => {
-                if args.len() > 2 {
-                    let text = &args[2..].join(" ");
-                    copy_to_clipboard(&text);
-                    println!("Copied to clipboard: {}", text);
-                } else {
-                    println!("Usage: akclip copy <text>");
-                }
+        let content = args[1..].join(" ");
+        match set_clipboard(&content) {
+            Ok(_) => {
+                println!("Copied to clipboard: {}", content);
+                exit(0);
             }
-            "paste" => {
-                if let Some(text) = paste_from_clipboard() {
-                    println!("{}", text);
-                } else {
-                    println!("Clipboard is empty");
-                }
-            }
-            "clear" => {
-                clear_clipboard();
-                println!("Clipboard cleared");
-            }
-            _ => {
-                println!("Unknown action: {}", action);
-                println!("Usage: akclip <copy|paste|clear>");
+            Err(e) => {
+                eprintln!("Failed to set clipboard: {}", e);
+                exit(1);
             }
         }
     } else {
-        println!("akclip - A clipboard utility");
-        println!("Usage: akclip <copy|paste|clear>");
+        match get_clipboard() {
+            Ok(content) => {
+                println!("{}", content);
+                exit(0);
+            }
+            Err(e) => {
+                eprintln!("Failed to get clipboard: {}", e);
+                exit(1);
+            }
+        }
     }
 }
 
-#[cfg(target_os = "windows")]
-fn copy_to_clipboard(text: &str) {
-    use std::process::Command;
-    let _ = Command::new("cmd")
-        .args(["/C", &format!("echo {} | clip", text)])
-        .output();
-}
-
-#[cfg(target_os = "macos")]
-fn copy_to_clipboard(text: &str) {
-    use std::process::Command;
-    let _ = Command::new("pbcopy")
-        .arg(text)
-        .output();
-}
-
-#[cfg(target_os = "linux")]
-fn copy_to_clipboard(text: &str) {
-    use std::process::Command;
-    let _ = Command::new("xclip")
-        .args(["-selection", "clipboard"])
-        .arg("-i")
-        .arg("-f")
-        .stdin(osutils_stdin(text))
-        .output();
-}
-
-#[cfg(target_os = "windows")]
-fn paste_from_clipboard() -> Option<String> {
-    use std::process::Command;
-    Command::new("cmd")
-        .args(["/C", "powershell -command Get-Clipboard"])
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|s| s.trim().to_string())
-}
-
-#[cfg(target_os = "macos")]
-fn paste_from_clipboard() -> Option<String> {
-    use std::process::Command;
-    Command::new("pbpaste")
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|s| s.trim().to_string())
-}
-
-#[cfg(target_os = "linux")]
-fn paste_from_clipboard() -> Option<String> {
-    use std::process::Command;
-    Command::new("xclip")
-        .args(["-selection", "clipboard", "-o"])
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|s| s.trim().to_string())
-}
-
-#[cfg(target_os = "windows")]
-fn clear_clipboard() {
-    use std::process::Command;
-    let _ = Command::new("cmd")
-        .args(["/C", "echo off | clip"])
-        .output();
-}
-
-#[cfg(target_os = "macos")]
-fn clear_clipboard() {
-    use std::process::Command;
-    let _ = Command::new("pbcopy")
-        .arg("/dev/null")
-        .output();
-}
-
-#[cfg(target_os = "linux")]
-fn clear_clipboard() {
-    use std::process::Command;
-    let _ = Command::new("xclip")
-        .args(["-selection", "clipboard", "-i", "/dev/null"])
-        .output();
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-fn copy_to_clipboard(_text: &str) {
-    eprintln!("Unsupported platform for copy operation");
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-fn paste_from_clipboard() -> Option<String> {
-    eprintln!("Unsupported platform for paste operation");
-    None
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-fn clear_clipboard() {
-    eprintln!("Unsupported platform for clear operation");
-}
-
-#[cfg(target_os = "linux")]
-fn osutils_stdin(text: &str) -> std::process::Stdio {
-    use std::io::Write;
-    let mut child = std::process::Command::new("xclip")
-        .args(["-selection", "clipboard", "-i"])
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn xclip");
-    if let Some(ref mut stdin) = child.stdin {
-        let _ = stdin.write_all(text.as_bytes());
+fn get_clipboard() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        let output = Command::new("pbpaste")
+            .output()
+            .map_err(|e| format!("Failed to execute pbpaste: {}", e))?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
-    std::process::Stdio::piped()
+    
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        let output = Command::new("xclip")
+            .args(&["-selection", "clipboard", "-o"])
+            .output()
+            .map_err(|e| format!("Failed to execute xclip: {}", e))?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let output = Command::new("powershell")
+            .args(&["-Command", "Get-Clipboard"])
+            .output()
+            .map_err(|e| format!("Failed to execute Get-Clipboard: {}", e))?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+    
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        Err("Unsupported platform".to_string())
+    }
+}
+
+fn set_clipboard(content: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        let mut child = Command::new("pbcopy")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn pbcopy: {}", e))?;
+        
+        use std::io::Write;
+        if let Some(ref mut stdin) = child.stdin {
+            stdin.write_all(content.as_bytes())
+                .map_err(|e| format!("Failed to write to pbcopy: {}", e))?;
+        }
+        
+        child.wait()
+            .map_err(|e| format!("Failed to wait for pbcopy: {}", e))?;
+        Ok(())
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        let mut child = Command::new("xclip")
+            .args(&["-selection", "clipboard"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn xclip: {}", e))?;
+        
+        use std::io::Write;
+        if let Some(ref mut stdin) = child.stdin {
+            stdin.write_all(content.as_bytes())
+                .map_err(|e| format!("Failed to write to xclip: {}", e))?;
+        }
+        
+        child.wait()
+            .map_err(|e| format!("Failed to wait for xclip: {}", e))?;
+        Ok(())
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let ps_command = format!("Set-Clipboard -Value '{}'", content.replace("'", "''"));
+        Command::new("powershell")
+            .args(&["-Command", &ps_command])
+            .output()
+            .map_err(|e| format!("Failed to execute Set-Clipboard: {}", e))?;
+        Ok(())
+    }
+    
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        Err("Unsupported platform".to_string())
+    }
 }
