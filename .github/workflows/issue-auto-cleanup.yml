@@ -1,0 +1,86 @@
+name: Issue Auto-Cleanup
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  cleanup-closed-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout for branch detection
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Cleanup Closed Issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          echo "Issue #$ISSUE_NUMBER closed: $ISSUE_TITLE"
+
+          BRANCH_NAME="issue-${ISSUE_NUMBER}"
+
+          # Delete the issue branch if it exists
+          if git ls-remote --heads origin $BRANCH_NAME 2>/dev/null | grep -q "$BRANCH_NAME"; then
+            echo "Deleting branch $BRANCH_NAME..."
+            git push origin --delete $BRANCH_NAME 2>/dev/null && echo "Branch $BRANCH_NAME deleted" || echo "Branch $BRANCH_NAME did not exist or already deleted"
+          else
+            echo "No branch $BRANCH_NAME found"
+          fi
+
+          # Find and delete any PRs for this issue
+          echo "Looking for PRs related to issue #$ISSUE_NUMBER..."
+          PRs=$(gh pr list --state all --search "issue-$ISSUE_NUMBER in:head" --json number,title,state --jq '.[] | "\(.number)|\(.title)|\(.state)"' 2>/dev/null || echo "")
+          if [ -n "$PRs" ]; then
+            echo "Found PRs for issue #$ISSUE_NUMBER:"
+            echo "$PRs" | while IFS='|' read -r pr_num pr_title pr_state; do
+              echo "  PR #$pr_num: $pr_title (state: $pr_state)"
+              if [ "$pr_state" != "closed" ]; then
+                echo "  Closing PR #$pr_num..."
+                gh pr close $pr_num --comment "Closing since issue #$ISSUE_NUMBER is now closed."
+              fi
+            done
+          else
+            echo "No PRs found for issue #$ISSUE_NUMBER"
+          fi
+
+          # Clean up any local artifacts for this issue
+          echo "Cleaning up any local artifacts for issue #$ISSUE_NUMBER..."
+
+          # Remove any .build_error.txt files that might be related
+          if [ -f .build_error.txt ]; then
+            echo "Found .build_error.txt - removing it as part of cleanup"
+            rm -f .build_error.txt
+          fi
+
+          # Remove any iteration history for this issue
+          if [ -f .iteration_history.txt ]; then
+            echo "Found .iteration_history.txt - removing it"
+            rm -f .iteration_history.txt
+          fi
+
+          # Remove any issue context files
+          rm -f .issue_body_tmp .comment_body_tmp 2>/dev/null || true
+          rm -f .github/issue-context 2>/dev/null || true
+
+          echo "Cleanup complete for issue #$ISSUE_NUMBER"
+
+      - name: Post Cleanup Summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          echo "=== Cleanup Summary for Issue #$ISSUE_NUMBER ==="
+          echo "Branch: issue-$ISSUE_NUMBER (deleted if existed)"
+          echo "Related PRs: closed (if any were open)"
+          echo "Artifacts: cleaned up"
