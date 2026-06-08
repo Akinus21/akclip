@@ -265,94 +265,9 @@ jobs:
 
           echo "$CurlResponse" > response.txt
 
-          cat > parse.js << 'ENDPARSE'
-          const fs = require("fs");
-          try {
-            const rawInput = fs.readFileSync("response.txt", "utf8").trim();
-            let combinedContent = "";
-
-            if (rawInput.startsWith("data:")) {
-              const lines = rawInput.split("\n");
-              for (let line of lines) {
-                line = line.trim();
-                if (!line || line === "data: [DONE]") continue;
-                if (line.startsWith("data:")) {
-                  try {
-                    const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    if (parsedChunk.choices && parsedChunk.choices[0] && parsedChunk.choices[0].delta) {
-                      const delta = parsedChunk.choices[0].delta.content || "";
-                      combinedContent += delta;
-                    }
-                  } catch (err) {}
-                }
-              }
-            } else {
-              const data = JSON.parse(rawInput);
-              if (data.choices && data.choices[0] && data.choices[0].message) {
-                combinedContent = data.choices[0].message.content || "";
-              } else if (data.error) {
-                console.error("AI returned error:", data.error);
-                process.exit(1);
-              }
-            }
-
-            if (!combinedContent) {
-              console.error("Empty content stream received.");
-              process.exit(1);
-            }
-
-            let cleaned = combinedContent.trim();
-
-            // VALIDATION: Ensure response is valid code, not explanation text
-            const firstLine = cleaned.split('\n')[0].trim();
-
-            // Acceptable starting patterns for various file types
-            const validStartPatterns = [
-              'use ', 'fn ', 'struct ', 'impl ', 'enum ', 'mod ', 'pub ', 'const ', 'let ', 'static ', 'trait ', 'type ',  // Rust
-              'name:', 'on:', 'jobs:', 'steps:', 'env:', 'run:', 'uses:', 'if:', 'with:', 'permissions:',  // YAML/workflow
-              '<', '<?',  // XML/HTML
-              '{', '['   // JSON
-            ];
-            const isLikelyCode = validStartPatterns.some(p => firstLine.startsWith(p));
-
-            // Check if response contains explanation indicators
-            const explanationIndicators = ['Looking at', 'The issue', 'The problem', 'I think', 'I need to', 'Here is', 'This is', 'The code', 'error:', 'Error:'];
-            const hasExplanation = explanationIndicators.some(e => firstLine.startsWith(e));
-
-            if (!isLikelyCode || hasExplanation) {
-              console.error("INVALID RESPONSE: AI returned explanatory text instead of code");
-              console.error("First line:", firstLine.substring(0, 100));
-              console.error("Writing sentinel to trigger retry...");
-              fs.writeFileSync("VALIDATION_FAILED", "true");
-              process.exit(0);
-            }
-
-            if (cleaned.startsWith("```")) {
-              cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
-              cleaned = cleaned.replace(/```$/, "");
-            }
-
-            // STRICT detection: must start with expected patterns
-            if (firstLine.startsWith('name:') && cleaned.includes("on:") && cleaned.includes("jobs:")) {
-              console.log("DETECTED: Workflow file needs fixing");
-              fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
-              fs.writeFileSync("detected_file.txt", "workflow");
-            } else if (firstLine.startsWith('use ') || firstLine.startsWith('fn ') || firstLine.startsWith('struct ') || firstLine.startsWith('impl ') || firstLine.startsWith('const ') || firstLine.startsWith('let ') || firstLine.startsWith('pub ') || firstLine.startsWith('mod ') || firstLine.startsWith('static ') || firstLine.startsWith('enum ') || firstLine.startsWith('trait ') || firstLine.startsWith('type ')) {
-              console.log("DETECTED: Rust source file needs fixing");
-              fs.writeFileSync("src/main.rs", cleaned);
-              fs.writeFileSync("detected_file.txt", "rust");
-            } else {
-              console.error("INVALID RESPONSE: Cannot determine file type from response");
-              console.error("First line:", firstLine.substring(0, 100));
-              console.error("Writing sentinel to trigger retry...");
-              fs.writeFileSync("VALIDATION_FAILED", "true");
-              process.exit(0);
-            }
-          } catch (e) {
-            console.error("Failed processing response:", e.message);
-            process.exit(1);
-          }
-          ENDPARSE
+          # Write parse.js using echo to avoid heredoc issues
+          echo 'const fs=require("fs");' > parse.js
+          echo 'try{const r=fs.readFileSync("response.txt","utf8").trim();let c="";if(r.startsWith("data:")){r.split("\n").forEach(l=>{l=l.trim();if(l&&l==="data: [DONE]")return;if(l.startsWith("data:")){try{const p=JSON.parse(l.replace(/^data:\s*/,""));if(p.choices&&p.choices[0]&&p.choices[0].delta){c+=p.choices[0].delta.content||""}}catch(e){}}})}}else{const d=JSON.parse(r);if(d.choices&&d.choices[0]&&d.choices[0].message){c=d.choices[0].message.content||""}else if(d.error){console.error("AI error:",d.error);process.exit(1)}}}if(!c){console.error("Empty response");process.exit(1)}let cl=c.trim();const fl=cl.split("\n")[0].trim();const v=["use ","fn ","struct ","impl ","enum ","mod ","pub ","const ","let ","static ","trait ","type ","name:","on:","jobs:","steps:","env:","run:","uses:","if:","with:","permissions:","<","<?","{","["];const isCode=v.some(p=>fl.startsWith(p));const bad=["Looking at","The issue","The problem","I think","I need to","Here is","This is","The code","error:","Error:"];const isBad=bad.some(e=>fl.startsWith(e));if(!isCode||isBad){console.error("Invalid response:",fl.substring(0,100));fs.writeFileSync("VALIDATION_FAILED","true");process.exit(0)}if(cl.startsWith("\`\`\`")){cl=cl.replace(/^\`\`\`[a-zA-Z]*\n?/,"");cl=cl.replace(/\`\`\`$/,"")}if(fl.startsWith("name:")&&cl.includes("on:")&&cl.includes("jobs:")){console.log("Workflow fix");fs.writeFileSync(".github/workflows/cicd-devops-loop.yml",cl);fs.writeFileSync("detected_file.txt","workflow")}else if(fl.startsWith("use ")||fl.startsWith("fn ")||fl.startsWith("struct ")||fl.startsWith("impl ")||fl.startsWith("const ")||fl.startsWith("let ")||fl.startsWith("pub ")||fl.startsWith("mod ")||fl.startsWith("static ")||fl.startsWith("enum ")||fl.startsWith("trait ")||fl.startsWith("type ")){console.log("Rust fix");fs.writeFileSync("src/main.rs",cl);fs.writeFileSync("detected_file.txt","rust")}else{console.error("Unknown type:",fl.substring(0,50));fs.writeFileSync("VALIDATION_FAILED","true");process.exit(0)}}catch(e){console.error("Parse error:",e.message);process.exit(1)}' >> parse.js
 
           node parse.js
 
@@ -401,8 +316,10 @@ jobs:
           BRANCH_NAME=$(git branch --show-current)
           echo "Current branch: $BRANCH_NAME"
 
+          set +e
           BUILD_OUTPUT=$(cargo check 2>&1)
           BUILD_EXIT=$?
+          set -e
 
           if [ $BUILD_EXIT -eq 0 ]; then
             echo "Build check passed on $BRANCH_NAME!"
@@ -410,14 +327,14 @@ jobs:
             rm -f .build_error.txt
           else
             echo "Build check failed. Saving error and pushing to trigger iteration..."
-            echo "$BUILD_OUTPUT" > .build_error.txt
-            echo "$BUILD_OUTPUT"
+            printf '%s\n' "$BUILD_OUTPUT" > .build_error.txt
+            printf '%s\n' "$BUILD_OUTPUT"
             echo "BUILD_SUCCESS=false" >> $GITHUB_OUTPUT
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
             git add .build_error.txt
-            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch"
-            git push origin $BRANCH_NAME
+            git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch" || true
+            git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
           fi
 
   create-pr:
