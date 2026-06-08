@@ -11,7 +11,6 @@ use arboard::Clipboard;
 #[cfg(target_os = "macos")]
 use clipboard::Clipboard;
 
-#[derive(Clone)]
 pub struct ClipboardManager {
     clipboard: Clipboard,
 }
