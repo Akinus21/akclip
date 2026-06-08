@@ -5,7 +5,7 @@ use std::process::exit;
 mod clipboard {
     use std::process::Command;
 
-    pub fn get_clipboard() -> Option<String> {
+    pub fn get() -> Option<String> {
         let output = Command::new("pbpaste").output().ok()?;
         if output.status.success() {
             Some(String::from_utf8_lossy(&output.stdout).to_string())
@@ -14,52 +14,47 @@ mod clipboard {
         }
     }
 
-    pub fn set_clipboard(text: &str) -> Result<(), String> {
-        let mut child = Command::new("pbcopy")
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-
-        if let Some(ref mut stdin) = child.stdin {
-            use std::io::Write;
-            stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+    pub fn set(text: &str) -> Option<()> {
+        let mut cmd = Command::new("pbcopy");
+        cmd.arg("-stdin").stdin(os_type::STDIN.clone()).ok()?;
+        let output = cmd.output().ok()?;
+        if output.status.success() {
+            Some(())
+        } else {
+            None
         }
-
-        child.wait().map_err(|e| e.to_string())?;
-        Ok(())
     }
 }
 
 #[cfg(target_os = "linux")]
 mod clipboard {
-    use std::process::Command;
+    use arboard::Clipboard;
+    use std::sync::Mutex;
 
-    pub fn get_clipboard() -> Option<String> {
-        let output = Command::new("xclip")
-            .args(["-selection", "clipboard", "-o"])
-            .output()
-            .ok()?;
-        if output.status.success() {
-            Some(String::from_utf8_lossy(&output.stdout).to_string())
+    static CLIPBOARD: Mutex<Option<Clipboard>> = Mutex::new(None);
+
+    pub fn get() -> Option<String> {
+        let mut clipboard = CLIPBOARD.lock().ok()?;
+        if clipboard.is_none() {
+            *clipboard = Clipboard::new().ok();
+        }
+        if let Some(ref mut cb) = *clipboard {
+            cb.get_text().ok()
         } else {
             None
         }
     }
 
-    pub fn set_clipboard(text: &str) -> Result<(), String> {
-        let mut child = Command::new("xclip")
-            .args(["-selection", "clipboard"])
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-
-        if let Some(ref mut stdin) = child.stdin {
-            use std::io::Write;
-            stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+    pub fn set(text: &str) -> Option<()> {
+        let mut clipboard = CLIPBOARD.lock().ok()?;
+        if clipboard.is_none() {
+            *clipboard = Clipboard::new().ok();
         }
-
-        child.wait().map_err(|e| e.to_string())?;
-        Ok(())
+        if let Some(ref mut cb) = *clipboard {
+            cb.set_text(text).ok()
+        } else {
+            None
+        }
     }
 }
 
@@ -67,7 +62,7 @@ mod clipboard {
 mod clipboard {
     use std::process::Command;
 
-    pub fn get_clipboard() -> Option<String> {
+    pub fn get() -> Option<String> {
         let output = Command::new("powershell")
             .args(["-Command", "Get-Clipboard"])
             .output()
@@ -79,16 +74,15 @@ mod clipboard {
         }
     }
 
-    pub fn set_clipboard(text: &str) -> Result<(), String> {
+    pub fn set(text: &str) -> Option<()> {
         let output = Command::new("powershell")
             .args(["-Command", &format!("Set-Clipboard -Value '{}'", text.replace("'", "''"))])
             .output()
-            .map_err(|e| e.to_string())?;
-
+            .ok()?;
         if output.status.success() {
-            Ok(())
+            Some(())
         } else {
-            Err(String::from_utf8_lossy(&output.stderr).to_string())
+            None
         }
     }
 }
@@ -97,21 +91,18 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        eprintln!("Usage: akclip <command> [text]");
-        eprintln!("Commands:");
-        eprintln!("  get          Get clipboard content");
-        eprintln!("  set <text>   Set clipboard content");
+        eprintln!("Usage: akclip [get|set <text>]");
         exit(1);
     }
 
-    let command = &args[1];
+    let subcommand = &args[1];
 
-    match command.as_str() {
+    match subcommand.as_str() {
         "get" => {
-            match clipboard::get_clipboard() {
-                Some(content) => println!("{}", content),
+            match clipboard::get() {
+                Some(text) => println!("{}", text),
                 None => {
-                    eprintln!("Failed to read clipboard content");
+                    eprintln!("Failed to get clipboard content");
                     exit(1);
                 }
             }
@@ -122,20 +113,17 @@ fn main() {
                 exit(1);
             }
             let text = &args[2];
-            match clipboard::set_clipboard(text) {
-                Ok(_) => println!("Clipboard set successfully"),
-                Err(e) => {
-                    eprintln!("Failed to set clipboard: {}", e);
+            match clipboard::set(text) {
+                Some(()) => println!("Clipboard set successfully"),
+                None => {
+                    eprintln!("Failed to set clipboard content");
                     exit(1);
                 }
             }
         }
         _ => {
-            eprintln!("Unknown command: {}", command);
-            eprintln!("Usage: akclip <command> [text]");
-            eprintln!("Commands:");
-            eprintln!("  get          Get clipboard content");
-            eprintln!("  set <text>   Set clipboard content");
+            eprintln!("Unknown subcommand: {}", subcommand);
+            eprintln!("Usage: akclip [get|set <text>]");
             exit(1);
         }
     }
