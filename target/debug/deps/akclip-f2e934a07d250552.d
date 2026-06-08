@@ -3,3 +3,5 @@
 /home/runner/work/akclip/akclip/target/debug/deps/libakclip-f2e934a07d250552.rmeta: src/main.rs
 
 src/main.rs:
+
+# env-dep:CARGO_PKG_VERSION=0.1.1
