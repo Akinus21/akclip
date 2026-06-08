@@ -397,7 +397,7 @@ jobs:
             rm -f .build_error.txt
             # Save iteration context for next run
             git log --oneline -n 1 > .iteration_history.txt
-            git add .iteration_history.txt
+            git add -f .iteration_history.txt
             git commit -m "chore: update iteration context" || true
           else
             echo "Build check failed. Saving error and pushing to trigger iteration..."
@@ -410,7 +410,7 @@ jobs:
             echo "---" >> .iteration_history.txt
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add .build_error.txt .iteration_history.txt
+            git add -f .build_error.txt .iteration_history.txt
             git commit --allow-empty -m "fix(issue#$ISSUE_NUM): build failed, retrying in issue-$ISSUE_NUM branch" || true
             git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
           fi
