@@ -80,7 +80,7 @@ jobs:
             echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
             echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
-            echo "$COMMENT_BODY" >> $GITHUB_OUTPUT
+            printf '%s' "$COMMENT_BODY" | base64 >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" == "issues" ]; then
             echo "Triggered by issue"
@@ -99,7 +99,7 @@ jobs:
             echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
             echo "PR_NUM=$PR_NUMBER" >> $GITHUB_OUTPUT
             echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
-            echo "$COMMENT_BODY" >> $GITHUB_OUTPUT
+            printf '%s' "$COMMENT_BODY" | base64 >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 
@@ -176,7 +176,7 @@ jobs:
 
           # Save issue body to temp file (escaped for JS safety)
           printf '%s' "$ISSUE_BODY" > .issue_body_tmp
-          printf '%s' "$COMMENT_BODY" > .comment_body_tmp
+          echo "$COMMENT_BODY" | base64 -d > .comment_body_tmp
 
           # Run cargo check to see if there are errors
           set +e
@@ -433,18 +433,24 @@ jobs:
         run: |
           BRANCH_NAME=$(git branch --show-current)
 
-          echo "Build succeeded! Creating PR to devops..."
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --head $BRANCH_NAME --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME, skipping creation"
+          else
+            echo "Build succeeded! Creating PR to devops..."
+            PR_BODY=$(printf '%s\n%s\n%s\n' \
+              "Closes #${ISSUE_NUM}" \
+              "This PR contains the autonomous fix for the reported issue." \
+              "The agent has verified that the build passes. Merging to devops will trigger integration to main.")
 
-          PR_BODY=$(printf '%s\n%s\n%s\n' \
-            "Closes #${ISSUE_NUM}" \
-            "This PR contains the autonomous fix for the reported issue." \
-            "The agent has verified that the build passes. Merging to devops will trigger integration to main.")
-
-          gh pr create \
-            --base devops \
-            --head $BRANCH_NAME \
-            --title "Fix issue #${ISSUE_NUM}" \
-            --body "${PR_BODY}"
+            gh pr create \
+              --base devops \
+              --head $BRANCH_NAME \
+              --title "Fix issue #${ISSUE_NUM}" \
+              --body "${PR_BODY}"
+            echo "PR created successfully"
+          fi
 
       - name: Post PR Link to Issue
         run: |
