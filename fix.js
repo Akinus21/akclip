@@ -1,58 +1,111 @@
 const fs = require("fs");
-const logs = process.env.RAW_COMPILER_LOGS;
-const mainRs = fs.readFileSync("src/main.rs", "utf8");
-let agentsMd = "";
-let cargoToml = "";
-let readmeMd = "";
-let cicdWorkflow = "";
-let issueWorkflow = "";
-let releaseWorkflow = "";
-let cleanupWorkflow = "";
+const src = fs.readFileSync("src/main.rs", "utf8");
+const issue = fs.readFileSync(".issue_body_tmp", "utf8");
+const comment = fs.readFileSync(".comment_body_tmp", "utf8");
+const error = fs.existsSync(".build_error.txt") ? fs.readFileSync(".build_error.txt", "utf8") : "No build errors";
+const history = fs.existsSync(".iteration_history.txt") ? fs.readFileSync(".iteration_history.txt", "utf8") : "";
+const firstLine = src.split("\n")[0];
 
-try { agentsMd = fs.readFileSync(".github/agents/devops-sre.md", "utf8"); } catch (e) {}
-try { cargoToml = fs.readFileSync("Cargo.toml", "utf8"); } catch (e) {}
-try { readmeMd = fs.readFileSync("README.md", "utf8"); } catch (e) {}
-try { cicdWorkflow = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8"); } catch (e) {}
-try { issueWorkflow = fs.readFileSync(".github/workflows/issue-resolver.yml", "utf8"); } catch (e) {}
-try { releaseWorkflow = fs.readFileSync(".github/workflows/release-sync.yml", "utf8"); } catch (e) {}
-try { cleanupWorkflow = fs.readFileSync(".github/workflows/issue-cleanup.yml", "utf8"); } catch (e) {}
+const systemPrompt = `You are OpenCode, an expert autonomous code-fixing agent running inside a CI/CD pipeline. Your job is to read code, understand errors, and produce the exact corrected file contents.
 
-const payload = {
+# ABSOLUTE OUTPUT RULES - VIOLATING ANY OF THESE CAUSES IMMEDIATE FAILURE
+
+RULE 1: YOUR ENTIRE RESPONSE must be raw Rust source code for src/main.rs. Nothing else.
+RULE 2: DO NOT include any prose, explanation, greeting, summary, or commentary before the code.
+RULE 3: DO NOT include any prose, explanation, or commentary after the code.
+RULE 4: DO NOT wrap the code in markdown code fences (no triple backticks, no code fences).
+RULE 5: DO NOT echo the build error, terminal output, or cargo messages back as code.
+RULE 6: DO NOT return placeholders, comments like "// fix here", or partial snippets.
+RULE 7: The FIRST line of your response must be EXACTLY: \`${firstLine}\`
+RULE 8: The LAST line of your response must be a valid closing brace or a valid Rust statement.
+RULE 9: Your response must be at least 500 characters (real Rust files are much longer).
+RULE 10: Your response must contain at least 2 opening braces and 2 closing braces.
+RULE 11: Your response must contain at least one "use " statement and one "fn " declaration.
+RULE 12: DO NOT include ANSI escape codes (no "[1m", "[0m", "[92m", etc).
+RULE 13: DO NOT include terminal output, cargo messages, or "[1m[92m    Finished[0m" style content.
+RULE 14: If the build already passes, STILL return the full src/main.rs unchanged (do not explain it passes).
+
+# WHAT TO RETURN
+
+Return the COMPLETE, UPDATED contents of src/main.rs after applying the minimal fix needed to resolve the build error. The file should be fully valid, compilable Rust that passes "cargo check".
+
+# HOW TO WORK
+
+STEP 1: Read the BUILD ERROR section carefully. The error tells you exactly what is wrong.
+STEP 2: Read the CURRENT CODE section. Understand the structure of the file.
+STEP 3: Read the ITERATION HISTORY. Learn from what was tried before. Do NOT repeat the same failed fix.
+STEP 4: Make the MINIMAL change needed to fix the error. Do not rewrite unrelated code.
+STEP 5: Preserve all unrelated code exactly as it is. Only change what is needed.
+STEP 6: Output the COMPLETE file with your fix applied. Every line of the file must be present in your response.
+
+# COMMON FIXES
+
+- Unused import: remove the "use" statement.
+- Unused variable: prefix with underscore (e.g., "_x") or remove it.
+- Missing import: add the appropriate "use" statement at the top.
+- Type mismatch: cast or convert the value to the expected type.
+- Missing field: add the field to the struct.
+- Borrow checker error: add "&", "&mut", or ".clone()" as appropriate.
+- Lifetime error: add explicit lifetime annotations.
+- Syntax error: fix the syntax (mismatched braces, missing semicolon, etc).
+
+# BAD RESPONSE EXAMPLES (DO NOT PRODUCE THESE)
+
+BAD EXAMPLE 1: "Here's the fixed code: ... The build should now pass."
+BAD EXAMPLE 2: "Looking at the error, the issue is that you're using an undeclared variable. To fix this, you need to declare it first."
+BAD EXAMPLE 3: "[1m[92m    Finished[0m release profile [optimized] target(s) in 13.71s"
+BAD EXAMPLE 4: "There is no build failure to fix. The Rust compilation completed successfully. Since there is no error to remediate, I have nothing to change or fix."
+
+# GOOD RESPONSE EXAMPLE (PRODUCE THIS)
+
+GOOD EXAMPLE: Your response starts with "use std::env;" and contains the complete valid Rust file with all functions, structs, and logic from the original file, with your targeted fix applied.
+
+# REMEMBER
+
+Your response is parsed by a strict validator. If it contains anything other than the complete updated src/main.rs, the run fails. Be precise. Be complete. Output ONLY the code.`;
+
+const userPrompt = `## TASK
+Fix the Rust build error in src/main.rs and return the complete updated file.
+
+## ISSUE
+${issue}
+
+## COMMENT
+${comment}
+
+## BUILD ERROR
+\`\`\`
+${error}
+\`\`\`
+
+## ITERATION HISTORY (what was tried before, do not repeat)
+${history}
+
+## CURRENT src/main.rs (first 5 lines shown for reference)
+\`\`\`rust
+${src.split("\n").slice(0, 5).join("\n")}
+\`\`\`
+
+## INSTRUCTIONS
+STEP 1: Analyze the BUILD ERROR above.
+STEP 2: Read the full CURRENT src/main.rs (you have it in context).
+STEP 3: Apply the MINIMAL fix needed.
+STEP 4: Return the COMPLETE updated src/main.rs.
+
+## OUTPUT REQUIREMENTS
+- First line: \`${firstLine}\`
+- No markdown fences, no explanation, no commentary.
+- Complete file, at least 500 chars, with valid Rust syntax.
+- Must contain "use " and "fn " declarations.
+
+Now output the complete updated src/main.rs:`;
+
+const payload = JSON.stringify({
   model: "minimax-m2.7:cloud",
   stream: false,
   messages: [
-    {
-      role: "system",
-      content: "You are an expert Rust engineer and DevOps engineer. Your role is to diagnose and fix build failures autonomously.\n\n" +
-        "## PROJECT CONTEXT\n\n" +
-        "This is akclip - a Rust CLI tool that captures stdin to clipboard. It uses arboard for clipboard access.\n\n" +
-        "## PROJECT FILES\n\n" +
-        "[Cargo.toml]:\n" + cargoToml + "\n\n" +
-        "[src/main.rs]:\n" + mainRs + "\n\n" +
-        "## WORKFLOW FILES\n\n" +
-        "[cicd-devops-loop.yml]:\n" + cicdWorkflow + "\n\n" +
-        "[issue-resolver.yml]:\n" + issueWorkflow + "\n\n" +
-        "[release-sync.yml]:\n" + releaseWorkflow + "\n\n" +
-        "[issue-cleanup.yml]:\n" + cleanupWorkflow + "\n\n" +
-        "## AGENTS.md (Agent Guidelines):\n" + agentsMd + "\n\n" +
-        "## BUILD ERROR\n\n" + logs + "\n\n" +
-        "## YOUR TASK\n\n" +
-        "1. DIAGNOSE the build failure from the error logs\n" +
-        "2. FIX the appropriate file(s):\n" +
-        "   - Rust compilation errors -> fix src/main.rs\n" +
-        "   - CI/CD workflow errors -> fix relevant workflow file\n\n" +
-        "## IMPORTANT RULES\n\n" +
-        "1. Your ENTIRE response must be ONLY raw code - no backticks, no markdown, no text\n" +
-        "2. For Rust files: start directly with 'use std::env;' or 'fn main' - nothing else\n" +
-        "3. For Workflow files: start directly with 'name:' - nothing else\n" +
-        "4. Do NOT explain what you changed or why - ONLY output the fixed file content\n" +
-        "5. If you include any text, commentary, or formatting, the fix will fail\n\n" +
-        "Analyze the build error and respond with ONLY the raw file content that fixes it. Your response must be ONLY the raw code - NO backticks, NO markdown, NO explanations, NO analysis - just pure raw code starting from the first character of the file."
-    },
-    {
-      role: "user",
-      content: "[BUILD ERROR LOGS]:\n" + logs
-    }
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt }
   ]
-};
-fs.writeFileSync("payload.json", JSON.stringify(payload));
+});
+fs.writeFileSync("payload.json", payload);
