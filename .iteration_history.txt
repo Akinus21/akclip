@@ -134,3 +134,47 @@ Cargo exit: 101
 [1m[92m  Downloaded[0m x11rb v0.13.2
 ---
 Error location: --> [0msrc/main.rs:107:54
+[Iteration ]: Build failed with exit 101
+Error: [1m[92m    Checking[0m akclip v0.1.1 (/home/runner/work/akclip/akclip)
+[1m[91merror[E0405][0m[1m: cannot find trait `Error` in this scope[0m
+  [1m[94m--> [0msrc/main.rs:48:46
+   [1m[94m|[0m
+[1m[94m48[0m [1m[94m|[0m         pub fn new() -> Result<Self, Box<dyn Error>> {
+   [1m[94m|[0m                                              [1m[91m^^^^^[0m [1m[91mnot found in this scope[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider importing one of these traits
+   [1m[94m|[0m
+[1m[94m40[0m [92m+ [0m    [92muse crate::Error;[0m
+   [1m[94m|[0m
+[1m[94m40[0m [92m+ [0m    [92muse std::error::Error;[0m
+   [1m[94m|[0m
+
+[1m[91merror[E0405][0m[1m: cannot find trait `Error` in this scope[0m
+  [1m[94m--> [0msrc/main.rs:55:61
+   [1m[94m|[0m
+[1m[94m55[0m [1m[94m|[0m         pub fn get_content(&self) -> Result<String, Box<dyn Error>> {
+   [1m[94m|[0m                                                             [1m[91m^^^^^[0m [1m[91mnot found in this scope[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider importing one of these traits
+   [1m[94m|[0m
+[1m[94m40[0m [92m+ [0m    [92muse crate::Error;[0m
+   [1m[94m|[0m
+[1m[94m40[0m [92m+ [0m    [92muse std::error::Error;[0m
+   [1m[94m|[0m
+
+[1m[91merror[E0405][0m[1m: cannot find trait `Error` in this scope[0m
+  [1m[94m--> [0msrc/main.rs:63:72
+   [1m[94m|[0m
+[1m[94m63[0m [1m[94m|[0m         pub fn set_content(&self, content: &str) -> Result<(), Box<dyn Error>> {
+   [1m[94m|[0m                                                                        [1m[91m^^^^^[0m [1m[91mnot found in this scope[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: consider importing one of these traits
+   [1m[94m|[0m
+[1m[94m40[0m [92m+ [0m    [92muse crate::Error;[0m
+   [1m[94m|[0m
+[1m[94m40[0m [92m+ [0m    [92muse std::error::Error;[0m
+   [1m[94m|[0m
+
+[1mFor more information about this error, try `rustc --explain E0405`.[0m
+[1m[91merror[0m: could not compile `akclip` (bin "akclip") due to 3 previous errors
+---
