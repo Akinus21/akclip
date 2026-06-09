@@ -27,15 +27,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           ISSUE_NUM: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          set -e
-          ISSUE_TITLE="${{ github.event.issue.title }}"
-          ISSUE_BODY="${{ github.event.issue.body }}"
           echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_OUTPUT
           echo "ISSUE_NUM=${ISSUE_NUM}" >> $GITHUB_OUTPUT
           gh issue comment list $ISSUE_NUM --json body --jq '.[].body' > .comments.txt 2>/dev/null || echo "No comments" > .comments.txt
-          ISSUE_BODY_ESCAPED=$(echo "$ISSUE_BODY" | jq -Rs .)
-          echo "ISSUE_BODY_ESCAPED=${ISSUE_BODY_ESCAPED}" >> $GITHUB_OUTPUT
 
       - name: Send to OpenCode
         id: send_webhook
@@ -45,14 +42,13 @@ jobs:
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WEBHOOK_URL: https://webhook.akinus21.com/webhook/akclip-build
+          ISSUE_NUM: ${{ steps.issue_context.outputs.ISSUE_NUM }}
+          ISSUE_TITLE: ${{ steps.issue_context.outputs.ISSUE_TITLE }}
         run: |
-          set -e
-          ISSUE_NUM="${{ steps.issue_context.outputs.ISSUE_NUM }}"
-          ISSUE_TITLE="${{ steps.issue_context.outputs.ISSUE_TITLE }}"
-          ISSUE_BODY="${{ steps.issue_context.outputs.ISSUE_BODY_ESCAPED }}"
           COMMENTS="$(cat .comments.txt)"
-          INSTRUCTIONS="INSTRUCTIONS FOR FIXING THIS ISSUE: 1. Create a new branch locally named issue-${ISSUE_NUM} from origin/main. 2. Apply the necessary fixes. 3. Push the branch to origin/issue-${ISSUE_NUM}. 4. CI will build and either succeed or send another webhook with errors. 5. If build fails, fix and push again to continue iteration."
-          MESSAGE="USER_ISSUE_REPORT - Issue ${ISSUE_NUM} | TITLE: ${ISSUE_TITLE} | BODY: ${ISSUE_BODY} | COMMENTS: ${COMMENTS} | ${INSTRUCTIONS}"
+          INSTRUCTIONS="INSTRUCTIONS: Create branch issue-${ISSUE_NUM} from origin/main, apply fix, push to origin/issue-${ISSUE_NUM}. CI will build. If build fails, fix error and push again."
+          MESSAGE="USER_ISSUE_REPORT Issue ${ISSUE_NUM} Title ${ISSUE_TITLE} Comments ${COMMENTS} ${INSTRUCTIONS}"
+          echo "$MESSAGE" > /tmp/message.txt
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
@@ -61,11 +57,8 @@ jobs:
             --arg ref "issue-${ISSUE_NUM}" \
             --arg branch "issue-${ISSUE_NUM}" \
             --arg issue_num "$ISSUE_NUM" \
-            --arg issue_title "$ISSUE_TITLE" \
-            --arg issue_body "$ISSUE_BODY" \
-            --arg comments "$COMMENTS" \
             --arg message "$MESSAGE" \
-            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,issue_title:$issue_title,issue_body:$issue_body,comments:$comments,message:$message}' > /tmp/payload.json
+            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,message:$message}' > /tmp/payload.json
           SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
           curl -fsSL -X POST \
             -H "Content-Type: application/json" \
@@ -80,5 +73,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           ISSUE_NUM: ${{ steps.issue_context.outputs.ISSUE_NUM }}
         run: |
-          set -e
           gh issue comment $ISSUE_NUM --body "Agent notified of /fix request. Work will begin shortly."

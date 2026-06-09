@@ -26,7 +26,6 @@ jobs:
       - name: Extract Issue Number
         id: extract_issue
         run: |
-          set -e
           BRANCH_NAME=$(git branch --show-current)
           ISSUE_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+' || echo "0")
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
@@ -35,7 +34,6 @@ jobs:
       - name: Build and Test
         id: build
         run: |
-          set -e
           cargo build --release 2>&1 | tee build.log
 
       - name: Send Build Failure Webhook
@@ -49,9 +47,8 @@ jobs:
           ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
           BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
         run: |
-          set -e
           BUILD_ERROR="$(cat build.log 2>/dev/null || echo 'Build failed')"
-          MESSAGE="BUILD_FAILURE: Issue #${ISSUE_NUM} | BRANCH: ${BRANCH_NAME} | ERROR: ${BUILD_ERROR} | INSTRUCTIONS: Fix the build error, push to origin/${BRANCH_NAME}, CI will rebuild."
+          MESSAGE="BUILD_FAILURE Issue ${ISSUE_NUM} Branch ${BRANCH_NAME} Error ${BUILD_ERROR}"
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
@@ -77,7 +74,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
         run: |
-          set -e
           gh issue comment $ISSUE_NUM --body "Build failed. Agent has been notified and will push a fix."
 
       - name: Upload Build Artifact
@@ -94,20 +90,12 @@ jobs:
           ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
           BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
         run: |
-          set -e
           echo "Build succeeded! Creating PR to devops..."
-          EXISTING_PR=$(gh pr list --head $BRANCH_NAME --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
-          if [ -n "$EXISTING_PR" ]; then
-            echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME"
-          else
-            printf 'Closes #%s\n\nThis PR contains the autonomous fix for the reported issue.\nThe agent has verified that the build passes. Merging to devops will trigger integration to main.' "$ISSUE_NUM" > /tmp/pr_body.txt
-            gh pr create \
-              --base devops \
-              --head $BRANCH_NAME \
-              --title "Fix issue #$ISSUE_NUM" \
-              --body-file /tmp/pr_body.txt
-            echo "PR created successfully"
-          fi
+          gh pr create \
+            --base devops \
+            --head $BRANCH_NAME \
+            --title "Fix issue ${ISSUE_NUM}" \
+            --body "Closes ${ISSUE_NUM}"
 
       - name: Post PR Link to Issue
         if: success()
@@ -116,9 +104,7 @@ jobs:
           ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
           BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
         run: |
-          set -e
           PR_URL=$(gh pr list --head $BRANCH_NAME --state open --json url --jq '.[0].url' 2>/dev/null || echo "")
           if [ -n "$PR_URL" ]; then
-            printf '## Fix Applied Successfully\n\nAgent has created a PR to address this issue: %s\nThe build has passed and the fix is ready for review.\nMerge the PR to devops to trigger integration to main.' "$PR_URL" > /tmp/comment.txt
-            gh issue comment $ISSUE_NUM --body-file /tmp/comment.txt
+            gh issue comment $ISSUE_NUM --body "Fix applied. PR: $PR_URL"
           fi
