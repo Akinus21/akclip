@@ -96,7 +96,7 @@ jobs:
             git pull origin $BRANCH_NAME --rebase || true
           else
             echo "Creating new branch: $BRANCH_NAME from devops"
-            git checkout -b $BRANCH_NAME origin/devops
+            git checkout -b $BRANCH_NAME origin/main
             mkdir -p .github
             echo "$ISSUE_NUM" > .github/issue-number
             ISSUE_BODY_STR="${{ steps.issue_info.outputs.ISSUE_BODY }}"
