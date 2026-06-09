@@ -28,22 +28,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           ISSUE_NUM: ${{ github.event.issue.number }}
         run: |
+          set -e
           echo "Collecting issue context for #$ISSUE_NUM..."
-
           ISSUE_TITLE="${{ github.event.issue.title }}"
           ISSUE_BODY="${{ github.event.issue.body }}"
-
           echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_OUTPUT
           echo "ISSUE_NUM=${ISSUE_NUM}" >> $GITHUB_OUTPUT
-
           echo "Fetching all comments for issue #$ISSUE_NUM..."
-          COMMENTS=$(gh issue comment list $ISSUE_NUM --json body --jq '.[].body' 2>/dev/null | paste -sd '\n' - || echo "")
-          if [ -z "$COMMENTS" ]; then
-            COMMENTS="No comments"
-          fi
-          echo "$COMMENTS" > .comments.txt
-          echo "COMMENTS_FILE=.comments.txt" >> $GITHUB_OUTPUT
-
+          gh issue comment list $ISSUE_NUM --json body --jq '.[].body' > .comments.txt 2>/dev/null || echo "No comments" > .comments.txt
           ISSUE_BODY_ESCAPED=$(echo "$ISSUE_BODY" | jq -Rs .)
           echo "ISSUE_BODY_ESCAPED=${ISSUE_BODY_ESCAPED}" >> $GITHUB_OUTPUT
 
@@ -56,16 +48,25 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WEBHOOK_URL: https://webhook.akinus21.com/webhook/akclip-build
         run: |
-          ISSUE_NUM=${{ steps.issue_context.outputs.ISSUE_NUM }}
+          set -e
+          ISSUE_NUM="${{ steps.issue_context.outputs.ISSUE_NUM }}"
           ISSUE_TITLE="${{ steps.issue_context.outputs.ISSUE_TITLE }}"
           ISSUE_BODY="${{ steps.issue_context.outputs.ISSUE_BODY_ESCAPED }}"
-          COMMENTS=$(cat .comments.txt)
+          COMMENTS="$(cat .comments.txt)"
+          INSTRUCTIONS="INSTRUCTIONS FOR FIXING THIS ISSUE: 1. Create a new branch locally named issue-${ISSUE_NUM} from origin/main. 2. Apply the necessary fixes to resolve the reported issue. 3. Push the branch to origin/issue-${ISSUE_NUM}. 4. CI will automatically build the branch and either succeed or send you another webhook with build errors. 5. If build fails, fix the errors and push again to the same branch to continue the iteration loop."
+          MESSAGE="USER_ISSUE_REPORT - Issue #${ISSUE_NUM}
 
-          INSTRUCTIONS="INSTRUCTIONS FOR FIXING THIS ISSUE: 1. Create a new branch locally named 'issue-${ISSUE_NUM}' from 'origin/main' 2. Apply the necessary fixes to resolve the reported issue 3. Push the branch to 'origin/issue-${ISSUE_NUM}' 4. CI will automatically build the branch and either succeed or send you another webhook with build errors 5. If build fails, fix the errors and push again to the same branch to continue the iteration loop"
+=== ISSUE TITLE ===
+${ISSUE_TITLE}
 
-          printf -v MESSAGE 'USER_ISSUE_REPORT - Issue #%s\n\n=== ISSUE TITLE ===\n%s\n\n=== ISSUE BODY ===\n%s\n\n=== COMMENTS ===\n%s\n\n%s' \
-            "$ISSUE_NUM" "$ISSUE_TITLE" "$ISSUE_BODY" "$COMMENTS" "$INSTRUCTIONS"
+=== ISSUE BODY ===
+${ISSUE_BODY}
 
+=== COMMENTS ===
+${COMMENTS}
+
+=== ${INSTRUCTIONS}"
+          echo "$MESSAGE" > /tmp/message.txt
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
@@ -79,29 +80,13 @@ jobs:
             --arg comments "$COMMENTS" \
             --arg message "$MESSAGE" \
             '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,issue_title:$issue_title,issue_body:$issue_body,comments:$comments,message:$message}' > /tmp/payload.json
-
           SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
-
-          RETRY_COUNT=0
-          SUCCESS=false
-
-          while [ "$SUCCESS" = "false" ]; do
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
-
-            if curl -fsSL -X POST \
-              -H "Content-Type: application/json" \
-              -H "X-GitHub-Event: build_failure" \
-              -H "X-Hub-Signature-256: $SIG" \
-              --data-binary @/tmp/payload.json \
-              "$WEBHOOK_URL"; then
-              SUCCESS=true
-              echo "Webhook sent successfully"
-            else
-              echo "Webhook attempt $RETRY_COUNT failed, retrying in 5 seconds..."
-              sleep 5
-            fi
-          done
+          curl -fsSL -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: build_failure" \
+            -H "X-Hub-Signature-256: $SIG" \
+            --data-binary @/tmp/payload.json \
+            "$WEBHOOK_URL"
 
       - name: Post Acknowledgment Comment
         if: always()
@@ -109,5 +94,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           ISSUE_NUM: ${{ steps.issue_context.outputs.ISSUE_NUM }}
         run: |
-          echo "Posting acknowledgment comment on issue #$ISSUE_NUM..."
+          set -e
           gh issue comment $ISSUE_NUM --body "Agent notified of /fix request. Work will begin shortly."

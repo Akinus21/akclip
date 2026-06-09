@@ -26,6 +26,7 @@ jobs:
       - name: Extract Issue Number
         id: extract_issue
         run: |
+          set -e
           BRANCH_NAME=$(git branch --show-current)
           ISSUE_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+' || echo "0")
           echo "BRANCH_NAME=$BRANCH_NAME"
@@ -36,14 +37,8 @@ jobs:
       - name: Build and Test
         id: build
         run: |
-          set -o pipefail
+          set -e
           cargo build --release 2>&1 | tee build.log
-          BUILD_EXIT=${PIPESTATUS[0]}
-          echo "BUILD_EXIT=$BUILD_EXIT" >> $GITHUB_OUTPUT
-          if [ $BUILD_EXIT -ne 0 ]; then
-            echo "Build failed with exit code $BUILD_EXIT"
-            exit $BUILD_EXIT
-          fi
 
       - name: Send Build Failure Webhook
         if: failure()
@@ -56,11 +51,17 @@ jobs:
           ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
           BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
         run: |
-          BUILD_ERROR=$(cat build.log 2>/dev/null || echo "Build failed")
+          set -e
+          BUILD_ERROR="$(cat build.log 2>/dev/null || echo 'Build failed')"
+          INSTRUCTIONS="INSTRUCTIONS: 1. Review the build error above. 2. Fix the code in your local branch. 3. Push the fix to origin/${BRANCH_NAME}. 4. CI will rebuild and either succeed or send another failure webhook."
+          MESSAGE="BUILD_FAILURE: Issue #${ISSUE_NUM}
 
-          printf -v MESSAGE 'BUILD_FAILURE: Issue #%s\n\nThe build for branch %s has failed. Please fix the errors below and push to the same branch to continue the iteration loop.\n\n=== BUILD ERROR ===\n%s\n\n=== INSTRUCTIONS ===\n1. Review the build error above\n2. Fix the code in your local branch\n3. Push the fix to origin/%s\n4. CI will rebuild and either succeed or send another failure webhook' \
-            "$ISSUE_NUM" "$BRANCH_NAME" "$BUILD_ERROR" "$BRANCH_NAME"
+The build for branch ${BRANCH_NAME} has failed. Please fix the errors below and push to the same branch to continue the iteration loop.
 
+=== BUILD ERROR ===
+${BUILD_ERROR}
+
+=== ${INSTRUCTIONS}"
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
@@ -72,29 +73,13 @@ jobs:
             --arg error "$BUILD_ERROR" \
             --arg message "$MESSAGE" \
             '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,error:$error,message:$message}' > /tmp/payload.json
-
           SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
-
-          RETRY_COUNT=0
-          SUCCESS=false
-
-          while [ "$SUCCESS" = "false" ]; do
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
-
-            if curl -fsSL -X POST \
-              -H "Content-Type: application/json" \
-              -H "X-GitHub-Event: build_failure" \
-              -H "X-Hub-Signature-256: $SIG" \
-              --data-binary @/tmp/payload.json \
-              "$WEBHOOK_URL"; then
-              SUCCESS=true
-              echo "Webhook sent successfully"
-            else
-              echo "Webhook attempt $RETRY_COUNT failed, retrying in 5 seconds..."
-              sleep 5
-            fi
-          done
+          curl -fsSL -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: build_failure" \
+            -H "X-Hub-Signature-256: $SIG" \
+            --data-binary @/tmp/payload.json \
+            "$WEBHOOK_URL"
 
       - name: Comment Build Failure on Issue
         if: failure()
@@ -102,6 +87,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
         run: |
+          set -e
           gh issue comment $ISSUE_NUM --body "Build failed. Agent has been notified and will push a fix."
 
       - name: Upload Build Artifact
@@ -118,22 +104,20 @@ jobs:
           ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
           BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
         run: |
+          set -e
           echo "Build succeeded! Creating PR to devops..."
-
           EXISTING_PR=$(gh pr list --head $BRANCH_NAME --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -n "$EXISTING_PR" ]; then
             echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME"
           else
-            PR_BODY=$(printf '%s\n%s\n%s\n' \
-              "Closes #$ISSUE_NUM" \
-              "This PR contains the autonomous fix for the reported issue." \
-              "The agent has verified that the build passes. Merging to devops will trigger integration to main.")
-
             gh pr create \
               --base devops \
               --head $BRANCH_NAME \
               --title "Fix issue #$ISSUE_NUM" \
-              --body "${PR_BODY}"
+              --body "Closes #$ISSUE_NUM
+
+This PR contains the autonomous fix for the reported issue.
+The agent has verified that the build passes. Merging to devops will trigger integration to main."
             echo "PR created successfully"
           fi
 
@@ -144,12 +128,12 @@ jobs:
           ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
           BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
         run: |
+          set -e
           PR_URL=$(gh pr list --head $BRANCH_NAME --state open --json url --jq '.[0].url' 2>/dev/null || echo "")
           if [ -n "$PR_URL" ]; then
-            COMMENT_BODY=$(printf '%s\n%s\n%s\n%s\n' \
-              "## Fix Applied Successfully" \
-              "Agent has created a PR to address this issue: $PR_URL" \
-              "The build has passed and the fix is ready for review." \
-              "Merge the PR to devops to trigger integration to main.")
-            gh issue comment $ISSUE_NUM --body "${COMMENT_BODY}"
+            gh issue comment $ISSUE_NUM --body "## Fix Applied Successfully
+
+Agent has created a PR to address this issue: $PR_URL
+The build has passed and the fix is ready for review.
+Merge the PR to devops to trigger integration to main."
           fi
