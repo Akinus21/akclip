@@ -30,11 +30,15 @@ jobs:
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 0
 
-      - name: Collect Issue Context
+      - name: Get Issue Body and Comments
         id: issue_context
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           ISSUE_NUM="${{ github.event.issue.number }}"
           echo "ISSUE_NUM=${ISSUE_NUM}" >> $GITHUB_OUTPUT
+          echo "EVENT_TYPE=${GITHUB_EVENT_NAME}" >> $GITHUB_OUTPUT
+          gh issue view $ISSUE_NUM --json body --jq '.body' > .issue_body.txt
           gh issue comment list $ISSUE_NUM --json body --jq '.[].body' > .comments.txt 2>/dev/null || echo "No comments" > .comments.txt
 
       - name: Send to OpenCode
@@ -45,13 +49,26 @@ jobs:
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WEBHOOK_URL: https://webhook.akinus21.com/webhook/akclip-build
+          ISSUE_NUM: ${{ steps.issue_context.outputs.ISSUE_NUM }}
+          EVENT_TYPE: ${{ steps.issue_context.outputs.EVENT_TYPE }}
         run: |
-          ISSUE_NUM="${{ github.event.issue.number }}"
-          ISSUE_TITLE="${{ github.event.issue.title }}"
-          ISSUE_BODY="${{ github.event.issue.body }}"
+          ISSUE_BODY="$(cat .issue_body.txt)"
           COMMENTS="$(cat .comments.txt)"
-          INSTRUCTIONS="INSTRUCTIONS: Create branch issue-${ISSUE_NUM} from origin/main, apply fix, push to origin/issue-${ISSUE_NUM}. CI will build. If build fails, fix error and push again."
-          MESSAGE="USER_ISSUE_REPORT Issue ${ISSUE_NUM} Title ${ISSUE_TITLE} Body ${ISSUE_BODY} Comments ${COMMENTS} ${INSTRUCTIONS}"
+
+          if [ "$EVENT_TYPE" = "issues" ]; then
+            TRIGGER_TYPE="ISSUE_OPENED"
+            MESSAGE="USER_ISSUE_REPORT TRIGGER:${TRIGGER_TYPE} Issue:${ISSUE_NUM} Body:${ISSUE_BODY} Instructions:Create branch issue-${ISSUE_NUM} from origin/main, apply fix, push to origin/issue-${ISSUE_NUM}"
+          else
+            TRIGGER_TYPE="COMMENT_ADDED"
+            MESSAGE="USER_ISSUE_REPORT TRIGGER:${TRIGGER_TYPE} Issue:${ISSUE_NUM} Body:${ISSUE_BODY} Comments:${COMMENTS} Instructions:Create branch issue-${ISSUE_NUM} from origin/main, apply fix, push to origin/issue-${ISSUE_NUM}"
+          fi
+
+          echo "=== SENDING WEBHOOK ===" 
+          echo "Trigger: $TRIGGER_TYPE"
+          echo "Issue: $ISSUE_NUM"
+          echo "Message: $MESSAGE"
+          echo "========================"
+
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
@@ -60,25 +77,28 @@ jobs:
             --arg ref "issue-${ISSUE_NUM}" \
             --arg branch "issue-${ISSUE_NUM}" \
             --arg issue_num "$ISSUE_NUM" \
-            --arg issue_title "$ISSUE_TITLE" \
+            --arg trigger_type "$TRIGGER_TYPE" \
             --arg issue_body "$ISSUE_BODY" \
             --arg comments "$COMMENTS" \
             --arg message "$MESSAGE" \
-            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,issue_title:$issue_title,issue_body:$issue_body,comments:$comments,message:$message}' > /tmp/payload.json
+            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,trigger_type:$trigger_type,issue_body:$issue_body,comments:$comments,message:$message}' > /tmp/payload.json
+
           SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
           RETRY=0
           SUCCESS=false
           while [ "$SUCCESS" = "false" ] && [ $RETRY -lt 5 ]; do
-            if curl -fsSL -X POST \
+            RESPONSE=$(curl -fsSL -X POST \
               -H "Content-Type: application/json" \
               -H "X-GitHub-Event: build_failure" \
               -H "X-Hub-Signature-256: $SIG" \
               --data-binary @/tmp/payload.json \
-              "$WEBHOOK_URL"; then
+              "$WEBHOOK_URL" 2>&1)
+            if [ $? -eq 0 ]; then
               SUCCESS=true
+              echo "Webhook sent: $RESPONSE"
             else
               RETRY=$((RETRY + 1))
-              echo "Webhook failed, retry $RETRY/5 in 5 seconds..."
+              echo "Webhook failed: $RESPONSE, retry $RETRY/5"
               sleep 5
             fi
           done
