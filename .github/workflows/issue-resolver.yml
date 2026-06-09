@@ -149,53 +149,72 @@ jobs:
           if [ $CARGO_EXIT -ne 0 ]; then
             echo "Build has errors. Sending webhook to OpenCode..."
             echo "$CARGO_OUTPUT" > .build_error.txt
+            echo "$CARGO_OUTPUT" | head -30 >> .iteration_history.txt
+            echo "---" >> .iteration_history.txt
 
-            ISSUE_BODY=$(cat .issue_body_tmp 2>/dev/null | base64 -d || echo "")
-            COMMENT_BODY=$(cat .comment_body_tmp 2>/dev/null | base64 -d || echo "")
-            BUILD_ERROR=$(cat .build_error.txt 2>/dev/null || echo "")
+            # Extract error line number if available
+            ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE "error\[E[0-9]+\].*:.*:[0-9]+:[0-9]+" | head -1 || echo "")
+            if [ -z "$ERROR_LINE" ]; then
+              ERROR_LINE=$(echo "$CARGO_OUTPUT" | grep -oE -e '-->[^:]+:[0-9]+:[0-9]+' | head -1 || echo "")
+            fi
+            echo "Error location: $ERROR_LINE" >> .iteration_history.txt
+          fi
 
-            WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
+          # Copy detailed fix.js with comprehensive prompt
+          cp .github/scripts/fix.js fix.js
 
-jq -n \
-              --arg event "build_failure" \
-              --arg repo "$REPO" \
-              --arg run_url "$RUN_URL" \
-              --arg sha "$SHA" \
-              --arg ref "$BRANCH_NAME" \
-              --arg error "$BUILD_ERROR" \
-              --arg message "Issue #$ISSUE_NUM: $ISSUE_BODY"$'\n\n'"Build Error: $BUILD_ERROR" \
-              '{
-                event:$event,
-                repo:$repo,
-                run_url:$run_url,
-                sha:$sha,
-                ref:$ref,
-                error:$error,
-                message:$message
-              }' > /tmp/payload.json
+          node fix.js
 
-            SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
+          echo "Sending issue to AI for diagnosis and fix..."
 
-            RETRY_COUNT=0
-            SUCCESS=false
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          SUCCESS=false
 
-            while [ "$SUCCESS" = "false" ]; do
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
+          while [ "$SUCCESS" = "false" ]; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "AI request attempt $RETRY_COUNT..."
 
-              if curl -fsSL -X POST \
-                -H "Content-Type: application/json" \
-                -H "X-GitHub-Event: build_failure" \
-                -H "X-Hub-Signature-256: $SIG" \
-                --data-binary @/tmp/payload.json \
-                "$WEBHOOK_URL"; then
-                SUCCESS=true
-                echo "Webhook sent successfully, OpenCode will push fixes to $BRANCH_NAME"
-              else
-                echo "Webhook attempt $RETRY_COUNT failed, retrying in 5 seconds..."
-                sleep 5
-              fi
-            done
+            CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ollama" \
+              -H "User-Agent: GitHubActions-CI" \
+              -d @payload.json \
+              -w "\n%{http_code}" \
+              --connect-timeout 60 \
+              --max-time 300)
+
+            HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
+            CurlResponse=$(echo "$CurlResponse" | sed '$d')
+
+            if [ "$HTTP_CODE" = "200" ] && (echo "$CurlResponse" | head -c1 | grep -q '{' || echo "$CurlResponse" | head -c1 | grep -q 'd'); then
+              SUCCESS=true
+              echo "AI request successful on attempt $RETRY_COUNT"
+            else
+              echo "Attempt $RETRY_COUNT failed with HTTP $HTTP_CODE"
+              echo "Retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+
+          if [ "$SUCCESS" = "false" ]; then
+            echo "Primary AI (minimax-m2.7:cloud) failed after $MAX_RETRIES attempts, trying fallback..."
+            sed -i 's/"model": "minimax-m2.7:cloud"/"model": "minimax-m2.7"/' payload.json
+            CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ollama" \
+              -H "User-Agent: GitHubActions-CI" \
+              -d @payload.json \
+              -w "\n%{http_code}" \
+              --connect-timeout 60 \
+              --max-time 300)
+            HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
+            CurlResponse=$(echo "$CurlResponse" | sed '$d')
+            if [ "$HTTP_CODE" != "200" ] || ( ! echo "$CurlResponse" | head -c1 | grep -q '{' && ! echo "$CurlResponse" | head -c1 | grep -q 'd' ); then
+              echo "Fallback AI also failed. Both primary and fallback are unavailable."
+              exit 1
+            fi
+          fi
 
             echo "NO_CHANGES=true" >> $GITHUB_OUTPUT
             echo "OpenCode notified. Waiting for fixes to be pushed to $BRANCH_NAME..."
