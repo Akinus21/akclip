@@ -79,4 +79,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           ISSUE_NUM="${{ github.event.issue.number }}"
-          gh issue comment $ISSUE_NUM --body "Agent notified of /fix request. Work will begin shortly."
+          gh issue comment $ISSUE_NUM --body "Request acknowledged. Processing will begin shortly."
