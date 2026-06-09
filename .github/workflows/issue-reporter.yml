@@ -66,12 +66,26 @@ jobs:
             --arg message "$MESSAGE" \
             '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,issue_title:$issue_title,issue_body:$issue_body,comments:$comments,message:$message}' > /tmp/payload.json
           SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
-          curl -fsSL -X POST \
-            -H "Content-Type: application/json" \
-            -H "X-GitHub-Event: build_failure" \
-            -H "X-Hub-Signature-256: $SIG" \
-            --data-binary @/tmp/payload.json \
-            "$WEBHOOK_URL"
+          RETRY=0
+          SUCCESS=false
+          while [ "$SUCCESS" = "false" ] && [ $RETRY -lt 5 ]; do
+            if curl -fsSL -X POST \
+              -H "Content-Type: application/json" \
+              -H "X-GitHub-Event: build_failure" \
+              -H "X-Hub-Signature-256: $SIG" \
+              --data-binary @/tmp/payload.json \
+              "$WEBHOOK_URL"; then
+              SUCCESS=true
+            else
+              RETRY=$((RETRY + 1))
+              echo "Webhook failed, retry $RETRY/5 in 5 seconds..."
+              sleep 5
+            fi
+          done
+          if [ "$SUCCESS" = "false" ]; then
+            echo "Webhook failed after 5 attempts"
+            exit 1
+          fi
 
       - name: Post Acknowledgment Comment
         if: always()
