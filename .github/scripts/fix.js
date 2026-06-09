@@ -6,7 +6,6 @@ const commentBuf = fs.readFileSync(".comment_body_tmp");
 const issue = Buffer.from(issueBuf, 'base64').toString('utf8');
 const comment = Buffer.from(commentBuf, 'base64').toString('utf8');
 const error = fs.existsSync(".build_error.txt") ? fs.readFileSync(".build_error.txt", "utf8") : "No build errors";
-const history = fs.existsSync(".iteration_history.txt") ? fs.readFileSync(".iteration_history.txt", "utf8") : "";
 const firstLine = src.split("\n")[0];
 
 const systemPrompt = `You are OpenCode, an expert autonomous code-fixing agent running inside a CI/CD pipeline. Your job is to read code, understand errors, and produce the exact corrected file contents.
@@ -36,10 +35,13 @@ Return the COMPLETE, UPDATED contents of src/main.rs after applying the minimal 
 
 STEP 1: Read the BUILD ERROR section carefully. The error tells you exactly what is wrong.
 STEP 2: Read the CURRENT CODE section. Understand the structure of the file.
-STEP 3: Read the ITERATION HISTORY. Learn from what was tried before. Do NOT repeat the same failed fix.
-STEP 4: Make the MINIMAL change needed to fix the error. Do not rewrite unrelated code.
-STEP 5: Preserve all unrelated code exactly as it is. Only change what is needed.
-STEP 6: Output the COMPLETE file with your fix applied. Every line of the file must be present in your response.
+STEP 3: Make the MINIMAL change needed to fix the error. Do not rewrite unrelated code.
+STEP 4: Preserve all unrelated code exactly as it is. Only change what is needed.
+STEP 5: Output the COMPLETE file with your fix applied. Every line of the file must be present in your response.
+
+# NEVER GIVE UP
+
+No matter how many times the build has failed, no matter what previous attempts were made, ALWAYS return the complete src/main.rs with your fix applied. There is NO limit on how many times you can try. Keep trying until the build passes.
 
 # COMMON FIXES
 
@@ -77,12 +79,9 @@ ${issue}
 ${comment}
 
 ## BUILD ERROR
-\`\`\`
+```
 ${error}
-\`\`\`
-
-## ITERATION HISTORY (what was tried before, do not repeat)
-${history}
+```
 
 ## CURRENT src/main.rs (first 5 lines shown for reference)
 \`\`\`rust

@@ -90,223 +90,52 @@ jobs:
 
           mkdir -p .git/info
           echo "compiler_error.log" >> .git/info/exclude
-          echo "payload.json" >> .git/info/exclude
-          echo "response.txt" >> .git/info/exclude
 
           git reset --hard HEAD
           git pull origin $BRANCH_NAME --rebase || true
 
-          LOOP_COUNT=$(git log -n 100 --format="%s" | grep -c "autonomously patched" || true)
-          echo "Current autonomous remediation loop depth: $LOOP_COUNT"
-          if [ "$LOOP_COUNT" -ge 10 ]; then
-            echo "CRITICAL: Maximum iteration depth reached (10 attempts). AI failed to solve error."
-            LAST_COMMIT=$(git log -1 --pretty=format:'%H - %s')
-            ISSUE_BODY=$(printf '%s\n%s\n\n%s\n%s\n' \
-              "The DevOps agent attempted 10 iterations to fix the build but was unsuccessful. Manual intervention required." \
-              "Last commit with issue:" \
-              "${LAST_COMMIT}" \
-              "Please review and provide guidance.")
-            gh issue create \
-              --title "DevOps Failed: Unable to fix build after 10 iterations" \
-              --body "${ISSUE_BODY}"
-            exit 1
-          fi
-
           COMPILER_LOGS=$(cat compiler_error.log 2>/dev/null || echo "Build/Workflow failed")
-          WORKFLOW_FILE=$(cat .github/workflows/cicd-devops-loop.yml 2>/dev/null || echo "")
+          REPO="${{ github.repository }}"
+          SHA="${{ github.sha }}"
+          REF="${{ github.ref_name }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
 
-          export RAW_COMPILER_LOGS="$COMPILER_LOGS"
+          printf -v MESSAGE 'The %s build in the %s branch failed with the following errors:\n\n%s\n' \
+            "$REPO" "$REF" "$COMPILER_LOGS"
 
-          cat > fix.js << 'ENDSCRIPT'
-          const fs = require("fs");
-          const logs = process.env.RAW_COMPILER_LOGS;
-          const mainRs = fs.readFileSync("src/main.rs", "utf8");
-          let agentsMd = "";
-          let cargoToml = "";
-          let readmeMd = "";
-          let cicdWorkflow = "";
-          let issueWorkflow = "";
-          let releaseWorkflow = "";
-          let cleanupWorkflow = "";
+          jq -n \
+            --arg event "build_failure" \
+            --arg repo "$REPO" \
+            --arg run_url "$RUN_URL" \
+            --arg sha "$SHA" \
+            --arg ref "$REF" \
+            --arg error "$COMPILER_LOGS" \
+            --arg message "$MESSAGE" \
+            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,error:$error,message:$message}' > /tmp/payload.json
 
-          try { agentsMd = fs.readFileSync(".github/agents/devops-sre.md", "utf8"); } catch (e) {}
-          try { cargoToml = fs.readFileSync("Cargo.toml", "utf8"); } catch (e) {}
-          try { readmeMd = fs.readFileSync("README.md", "utf8"); } catch (e) {}
-          try { cicdWorkflow = fs.readFileSync(".github/workflows/cicd-devops-loop.yml", "utf8"); } catch (e) {}
-          try { issueWorkflow = fs.readFileSync(".github/workflows/issue-resolver.yml", "utf8"); } catch (e) {}
-          try { releaseWorkflow = fs.readFileSync(".github/workflows/release-sync.yml", "utf8"); } catch (e) {}
-          try { cleanupWorkflow = fs.readFileSync(".github/workflows/issue-cleanup.yml", "utf8"); } catch (e) {}
+          SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
 
-          const payload = {
-            model: "minimax-m2.7:cloud",
-            stream: false,
-            messages: [
-              {
-                role: "system",
-                content: "You are an expert Rust engineer and DevOps engineer. Your role is to diagnose and fix build failures autonomously.\n\n" +
-                  "## PROJECT CONTEXT\n\n" +
-                  "This is akclip - a Rust CLI tool that captures stdin to clipboard. It uses arboard for clipboard access.\n\n" +
-                  "## PROJECT FILES\n\n" +
-                  "[Cargo.toml]:\n" + cargoToml + "\n\n" +
-                  "[src/main.rs]:\n" + mainRs + "\n\n" +
-                  "## WORKFLOW FILES\n\n" +
-                  "[cicd-devops-loop.yml]:\n" + cicdWorkflow + "\n\n" +
-                  "[issue-resolver.yml]:\n" + issueWorkflow + "\n\n" +
-                  "[release-sync.yml]:\n" + releaseWorkflow + "\n\n" +
-                  "[issue-cleanup.yml]:\n" + cleanupWorkflow + "\n\n" +
-                  "## AGENTS.md (Agent Guidelines):\n" + agentsMd + "\n\n" +
-                  "## BUILD ERROR\n\n" + logs + "\n\n" +
-                  "## YOUR TASK\n\n" +
-                  "1. DIAGNOSE the build failure from the error logs\n" +
-                  "2. FIX the appropriate file(s):\n" +
-                  "   - Rust compilation errors -> fix src/main.rs\n" +
-                  "   - CI/CD workflow errors -> fix relevant workflow file\n\n" +
-                  "## IMPORTANT RULES\n\n" +
-                  "1. Your ENTIRE response must be ONLY raw code - no backticks, no markdown, no text\n" +
-                  "2. For Rust files: start directly with 'use std::env;' or 'fn main' - nothing else\n" +
-                  "3. For Workflow files: start directly with 'name:' - nothing else\n" +
-                  "4. Do NOT explain what you changed or why - ONLY output the fixed file content\n" +
-                  "5. If you include any text, commentary, or formatting, the fix will fail\n\n" +
-                  "Analyze the build error and respond with ONLY the raw file content that fixes it. Your response must be ONLY the raw code - NO backticks, NO markdown, NO explanations, NO analysis - just pure raw code starting from the first character of the file."
-              },
-              {
-                role: "user",
-                content: "[BUILD ERROR LOGS]:\n" + logs
-              }
-            ]
-          };
-          fs.writeFileSync("payload.json", JSON.stringify(payload));
-          ENDSCRIPT
-
-          node fix.js
-
-          echo "Sending payload to AI endpoint for remediation..."
-
-          MAX_RETRIES=10
           RETRY_COUNT=0
           SUCCESS=false
 
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$SUCCESS" = "false" ]; do
+          while [ "$SUCCESS" = "false" ]; do
             RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "AI request attempt $RETRY_COUNT of $MAX_RETRIES..."
+            echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
 
-            CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
+            if curl -fsSL -X POST \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ollama" \
-              -H "User-Agent: GitHubActions-CI" \
-              -d @payload.json \
-              -w "\n%{http_code}" \
-              --connect-timeout 60 \
-              --max-time 300)
-
-            HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
-            CurlResponse=$(echo "$CurlResponse" | sed '$d')
-
-            if [ "$HTTP_CODE" = "200" ] && echo "$CurlResponse" | head -c1 | grep -q '{'; then
+              -H "X-GitHub-Event: build_failure" \
+              -H "X-Hub-Signature-256: $SIG" \
+              --data-binary @/tmp/payload.json \
+              "$WEBHOOK_URL"; then
               SUCCESS=true
-              echo "AI request successful on attempt $RETRY_COUNT"
+              echo "Webhook sent successfully, OpenCode will push fixes to $BRANCH_NAME"
             else
-              echo "Attempt $RETRY_COUNT failed with HTTP $HTTP_CODE"
-              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                echo "Retrying in 5 seconds..."
-                sleep 5
-              fi
+              echo "Webhook attempt $RETRY_COUNT failed, retrying in 5 seconds..."
+              sleep 5
             fi
           done
-
-          if [ "$SUCCESS" = "false" ]; then
-            echo "Primary AI (minimax-m2.7:cloud) failed after $MAX_RETRIES attempts, trying fallback..."
-            sed -i 's/"model": "minimax-m2.7:cloud"/"model": "minimax-m2.7"/' payload.json
-            CurlResponse=$(curl -s -L --post301 --post302 --post303 "https://ollama.akinus21.com/v1/chat/completions" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ollama" \
-              -H "User-Agent: GitHubActions-CI" \
-              -d @payload.json \
-              -w "\n%{http_code}" \
-              --connect-timeout 60 \
-              --max-time 300)
-            HTTP_CODE=$(echo "$CurlResponse" | tail -n1)
-            CurlResponse=$(echo "$CurlResponse" | sed '$d')
-            if [ "$HTTP_CODE" != "200" ] || ! echo "$CurlResponse" | head -c1 | grep -q '{'; then
-              echo "Fallback AI also failed. Both primary and fallback are unavailable."
-              exit 1
-            fi
-          fi
-
-          echo "$CurlResponse" > response.txt
-
-          cat > parse.js << 'ENDPARSE'
-          const fs = require("fs");
-          try {
-            const rawInput = fs.readFileSync("response.txt", "utf8").trim();
-            let combinedContent = "";
-
-            if (rawInput.startsWith("data:")) {
-              const lines = rawInput.split("\n");
-              for (let line of lines) {
-                line = line.trim();
-                if (!line || line === "data: [DONE]") continue;
-                if (line.startsWith("data:")) {
-                  try {
-                    const parsedChunk = JSON.parse(line.replace(/^data:\s*/, ""));
-                    if (parsedChunk.choices && parsedChunk.choices[0] && parsedChunk.choices[0].delta) {
-                      const delta = parsedChunk.choices[0].delta.content || "";
-                      combinedContent += delta;
-                    }
-                  } catch (err) {}
-                }
-              }
-            } else {
-              const data = JSON.parse(rawInput);
-              if (data.choices && data.choices[0] && data.choices[0].message) {
-                combinedContent = data.choices[0].message.content || "";
-              } else if (data.error) {
-                console.error("AI returned error:", data.error);
-                process.exit(1);
-              }
-            }
-
-            if (!combinedContent) {
-              console.error("Empty content stream received.");
-              process.exit(1);
-            }
-
-            let cleaned = combinedContent.trim();
-            if (cleaned.startsWith("```")) {
-              cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, "");
-              cleaned = cleaned.replace(/```$/, "");
-            }
-
-            if (cleaned.includes("name:") && cleaned.includes("on:") && cleaned.includes("jobs:")) {
-              fs.writeFileSync(".github/workflows/cicd-devops-loop.yml", cleaned);
-              console.log("Workflow file updated!");
-            } else if (cleaned.includes("fn main") || cleaned.includes("use std")) {
-              fs.writeFileSync("src/main.rs", cleaned);
-              console.log("Rust source file updated!");
-            } else {
-              fs.writeFileSync("src/main.rs", cleaned);
-              console.log("Defaulting to Rust source!");
-            }
-          } catch (e) {
-            console.error("Failed processing response:", e.message);
-            process.exit(1);
-          }
-          ENDPARSE
-
-          node parse.js
-
-          echo "CI successfully applied patch!"
-
-          if git diff --quiet; then
-            echo "The AI patch matches the existing code. No changes to commit."
-            echo "Breaking loop to prevent an infinite cycle."
-            exit 0
-          else
-            echo "Changes detected! Staging and committing..."
-            git add -A
-            git commit -m "fix(ci): autonomously patched failure"
-            git push origin $BRANCH_NAME
-          fi
 
       - name: Respond to PR Comment
         if: github.event_name == 'pull_request_review_comment'
