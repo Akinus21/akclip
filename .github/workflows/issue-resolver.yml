@@ -1,10 +1,6 @@
 name: Issue Resolver
 
 on:
-  issues:
-    types: [opened]
-  issue_comment:
-    types: [created]
   push:
     branches:
       - 'issue-*'
@@ -16,12 +12,7 @@ permissions:
 
 jobs:
   resolve-issue:
-    if: "github.event_name == 'push' || contains(github.event.issue.body, '/fix') || contains(github.event.comment.body, '/fix')"
     runs-on: ubuntu-latest
-    outputs:
-      issue_num: ${{ steps.issue_info.outputs.ISSUE_NUM }}
-      branch_name: ${{ steps.branch_setup.outputs.BRANCH_NAME }}
-      build_success: ${{ steps.send_to_opencode.outputs.BUILD_SUCCESS }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -32,118 +23,54 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Determine Issue Number
-        id: issue_info
+      - name: Extract Issue Number
+        id: extract_issue
         run: |
-          echo "Determining issue context..."
-
-          if [ "${{ github.event_name }}" == "push" ]; then
-            CURRENT_BRANCH=$(git branch --show-current)
-            ISSUE_NUM=$(echo "$CURRENT_BRANCH" | grep -oE '[0-9]+' || echo "0")
-            echo "Triggered by push to $CURRENT_BRANCH, extracted issue #$ISSUE_NUM"
-            echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
-
-            if [ -f .github/issue-context ]; then
-              echo "Loading previous issue context..."
-              cp .github/issue-context .issue_body_tmp
-            else
-              printf '' > .issue_body_tmp
-            fi
-
-            if [ -f .build_error.txt ]; then
-              echo "Including build error from previous iteration..."
-              printf '\n[BUILD ERROR FROM PREVIOUS ITERATION]\n' >> .issue_body_tmp
-              head -30 .build_error.txt >> .issue_body_tmp
-            fi
-
-            printf '' > .comment_body_tmp
-          elif [ "${{ github.event_name }}" == "issue_comment" ]; then
-            echo "Triggered by issue comment"
-            echo "ISSUE_NUM=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            printf '%s' "${{ github.event.issue.body }}" | base64 > .issue_body_tmp
-            printf '%s' "${{ github.event.comment.body }}" | base64 > .comment_body_tmp
-          elif [ "${{ github.event_name }}" == "issues" ]; then
-            echo "Triggered by issue"
-            echo "ISSUE_NUM=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            printf '%s' "${{ github.event.issue.body }}" | base64 > .issue_body_tmp
-            printf '' > .comment_body_tmp
-          fi
-
-      - name: Setup Issue Branch
-        id: branch_setup
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          ISSUE_NUM: ${{ steps.issue_info.outputs.ISSUE_NUM }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          ISSUE_NUM=${{ steps.issue_info.outputs.ISSUE_NUM }}
-          BRANCH_NAME="issue-${ISSUE_NUM}"
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
-
-          echo "Setting up branch: $BRANCH_NAME"
-
-          CURRENT_BRANCH=$(git branch --show-current)
-
-          if [ "$CURRENT_BRANCH" = "$BRANCH_NAME" ]; then
-            echo "Already on branch $BRANCH_NAME, pulling latest..."
-            git pull origin $BRANCH_NAME --rebase || true
-          elif git ls-remote --heads origin $BRANCH_NAME 2>/dev/null | grep -q "$BRANCH_NAME"; then
-            echo "Branch exists, checking out..."
-            git fetch origin $BRANCH_NAME
-            git checkout $BRANCH_NAME
-            git pull origin $BRANCH_NAME --rebase || true
-          else
-            echo "Creating new branch: $BRANCH_NAME from devops"
-            git checkout -b $BRANCH_NAME origin/main
-            mkdir -p .github
-            echo "$ISSUE_NUM" > .github/issue-number
-            ISSUE_BODY_STR="${{ steps.issue_info.outputs.ISSUE_BODY }}"
-            if [ -n "$ISSUE_BODY_STR" ]; then
-              echo "$ISSUE_BODY_STR" > .github/issue-context
-            fi
-            git add .github/issue-number .github/issue-context 2>/dev/null || git add .github/issue-number
-            git commit -m "chore: initialized issue branch for #${ISSUE_NUM}"
-            git push -u origin $BRANCH_NAME
-          fi
-
-      - name: Send to OpenCode for Fix
-        id: send_to_opencode
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          REPO_SLUG: ${{ github.repository }}
-          ISSUE_NUM: ${{ steps.issue_info.outputs.ISSUE_NUM }}
-        run: |
-          echo "Analyzing issue for autonomous fix..."
-
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          mkdir -p .git/info
-          echo ".build_error.txt" >> .git/info/exclude
-          echo ".issue_body_tmp" >> .git/info/exclude
-          echo ".comment_body_tmp" >> .git/info/exclude
-
-          set +e
-          CARGO_OUTPUT=$(cargo check 2>&1)
-          CARGO_EXIT=$?
-          set -e
-
           BRANCH_NAME=$(git branch --show-current)
-          ISSUE_NUM=${{ steps.issue_info.outputs.ISSUE_NUM }}
-          REPO="${{ github.repository }}"
-          SHA="${{ github.sha }}"
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ISSUE_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+' || echo "0")
+          echo "BRANCH_NAME=$BRANCH_NAME"
+          echo "ISSUE_NUM=$ISSUE_NUM"
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
 
-          ISSUE_BODY=$(cat .issue_body_tmp 2>/dev/null | base64 -d || echo "No issue body")
-          COMMENT_BODY=$(cat .comment_body_tmp 2>/dev/null | base64 -d || echo "No comment")
-          BUILD_ERROR=$(cat .build_error.txt 2>/dev/null || echo "$CARGO_OUTPUT")
+      - name: Build and Test
+        id: build
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          echo "BUILD_EXIT=$BUILD_EXIT" >> $GITHUB_OUTPUT
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "Build failed with exit code $BUILD_EXIT"
+            exit $BUILD_EXIT
+          fi
 
-          WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
+      - name: Send Build Failure Webhook
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WEBHOOK_URL: https://webhook.akinus21.com/webhook/akclip-build
+          ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
+          BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
+        run: |
+          BUILD_ERROR=$(cat build.log 2>/dev/null || echo "Build failed")
 
-          printf -v MESSAGE 'REPO: %s\nBRANCH TO PUSH FIXES: %s\nISSUE #: %s\n\n=== ISSUE BODY ===\n%s\n\n=== COMMENT ===\n%s\n\n=== BUILD ERROR ===\n%s' \
-            "$REPO" "$BRANCH_NAME" "$ISSUE_NUM" "$ISSUE_BODY" "$COMMENT_BODY" "$BUILD_ERROR"
+          printf -v MESSAGE 'BUILD_FAILURE: Issue #%s
+
+The build for branch %s has failed. Please fix the errors below and push to the same branch to continue the iteration loop.
+
+=== BUILD ERROR ===
+%s
+
+=== INSTRUCTIONS ===
+1. Review the build error above
+2. Fix the code in your local branch
+3. Push the fix to origin/%s
+4. CI will rebuild and either succeed or send another failure webhook' \
+            "$ISSUE_NUM" "$BRANCH_NAME" "$BUILD_ERROR" "$BRANCH_NAME"
 
           jq -n \
             --arg event "build_failure" \
@@ -173,57 +100,65 @@ jobs:
               --data-binary @/tmp/payload.json \
               "$WEBHOOK_URL"; then
               SUCCESS=true
-              echo "Webhook sent successfully, OpenCode will push fixes to $BRANCH_NAME"
+              echo "Webhook sent successfully"
             else
               echo "Webhook attempt $RETRY_COUNT failed, retrying in 5 seconds..."
               sleep 5
             fi
           done
 
-          echo "OpenCode notified. Waiting for fixes to be pushed to $BRANCH_NAME..."
+      - name: Comment Build Failure on Issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
+        run: |
+          gh issue comment $ISSUE_NUM --body "Build failed. Agent has been notified and will push a fix."
 
-  create-pr:
-    needs: resolve-issue
-    if: needs.resolve-issue.outputs.build_success == 'true'
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      ISSUE_NUM: ${{ needs.resolve-issue.outputs.issue_num }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Upload Build Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 0
+          name: akclip-binary
+          path: target/release/akclip
 
       - name: Create PR to Devops
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
+          BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
         run: |
-          BRANCH_NAME=$(git branch --show-current)
+          echo "Build succeeded! Creating PR to devops..."
 
           EXISTING_PR=$(gh pr list --head $BRANCH_NAME --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -n "$EXISTING_PR" ]; then
-            echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME, skipping creation"
+            echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME"
           else
-            echo "Build succeeded! Creating PR to devops..."
             PR_BODY=$(printf '%s\n%s\n%s\n' \
-              "Closes #${ISSUE_NUM}" \
+              "Closes #$ISSUE_NUM" \
               "This PR contains the autonomous fix for the reported issue." \
               "The agent has verified that the build passes. Merging to devops will trigger integration to main.")
 
             gh pr create \
               --base devops \
               --head $BRANCH_NAME \
-              --title "Fix issue #${ISSUE_NUM}" \
+              --title "Fix issue #$ISSUE_NUM" \
               --body "${PR_BODY}"
             echo "PR created successfully"
           fi
 
       - name: Post PR Link to Issue
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ISSUE_NUM: ${{ steps.extract_issue.outputs.ISSUE_NUM }}
+          BRANCH_NAME: ${{ steps.extract_issue.outputs.BRANCH_NAME }}
         run: |
           PR_URL=$(gh pr list --head $BRANCH_NAME --state open --json url --jq '.[0].url' 2>/dev/null || echo "")
           if [ -n "$PR_URL" ]; then
             COMMENT_BODY=$(printf '%s\n%s\n%s\n%s\n' \
-              "## Fix In Progress" \
+              "## Fix Applied Successfully" \
               "Agent has created a PR to address this issue: $PR_URL" \
               "The build has passed and the fix is ready for review." \
               "Merge the PR to devops to trigger integration to main.")
