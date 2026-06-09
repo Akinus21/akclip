@@ -23,7 +23,7 @@ jobs:
             echo "Skipping bot comment"
             exit 78
           fi
-    steps:
+
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
