@@ -16,6 +16,12 @@ jobs:
     if: "contains(github.event.issue.body, '/fix') || contains(github.event.comment.body, '/fix')"
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
       - name: Collect Issue Context
         id: issue_context
         env:
