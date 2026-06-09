@@ -100,14 +100,12 @@ jobs:
           if [ -n "$EXISTING_PR" ]; then
             echo "PR #$EXISTING_PR already exists for branch $BRANCH_NAME"
           else
+            printf 'Closes #%s\n\nThis PR contains the autonomous fix for the reported issue.\nThe agent has verified that the build passes. Merging to devops will trigger integration to main.' "$ISSUE_NUM" > /tmp/pr_body.txt
             gh pr create \
               --base devops \
               --head $BRANCH_NAME \
               --title "Fix issue #$ISSUE_NUM" \
-              --body "Closes #$ISSUE_NUM
-
-This PR contains the autonomous fix for the reported issue.
-The agent has verified that the build passes. Merging to devops will trigger integration to main."
+              --body-file /tmp/pr_body.txt
             echo "PR created successfully"
           fi
 
@@ -121,9 +119,6 @@ The agent has verified that the build passes. Merging to devops will trigger int
           set -e
           PR_URL=$(gh pr list --head $BRANCH_NAME --state open --json url --jq '.[0].url' 2>/dev/null || echo "")
           if [ -n "$PR_URL" ]; then
-            gh issue comment $ISSUE_NUM --body "## Fix Applied Successfully
-
-Agent has created a PR to address this issue: $PR_URL
-The build has passed and the fix is ready for review.
-Merge the PR to devops to trigger integration to main."
+            printf '## Fix Applied Successfully\n\nAgent has created a PR to address this issue: %s\nThe build has passed and the fix is ready for review.\nMerge the PR to devops to trigger integration to main.' "$PR_URL" > /tmp/comment.txt
+            gh issue comment $ISSUE_NUM --body-file /tmp/comment.txt
           fi
