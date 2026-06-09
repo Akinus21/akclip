@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   report-issue:
-    if: "contains(github.event.issue.body, '/fix') || (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/fix'))"
+    if: "(github.event_name == 'issues' && contains(github.event.issue.body, '/fix')) || (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/fix'))"
     runs-on: ubuntu-latest
     steps:
       - name: Skip if bot comment
