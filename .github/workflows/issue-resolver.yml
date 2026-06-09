@@ -146,60 +146,49 @@ jobs:
           SHA="${{ github.sha }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          if [ $CARGO_EXIT -ne 0 ]; then
-            echo "Build has errors. Sending webhook to OpenCode..."
-            echo "$CARGO_OUTPUT" > .build_error.txt
+          ISSUE_BODY=$(cat .issue_body_tmp 2>/dev/null | base64 -d || echo "")
+          COMMENT_BODY=$(cat .comment_body_tmp 2>/dev/null | base64 -d || echo "")
+          BUILD_ERROR=$(cat .build_error.txt 2>/dev/null || echo "")
 
-            ISSUE_BODY=$(cat .issue_body_tmp 2>/dev/null | base64 -d || echo "")
-            COMMENT_BODY=$(cat .comment_body_tmp 2>/dev/null | base64 -d || echo "")
-            BUILD_ERROR=$(cat .build_error.txt 2>/dev/null || echo "")
+          WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
 
-            WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
+          printf -v MESSAGE 'Issue #%s: %s\n\nComment: %s\n\nBuild Error:\n%s' \
+            "$ISSUE_NUM" "$ISSUE_BODY" "$COMMENT_BODY" "$BUILD_ERROR"
 
-            printf -v MESSAGE 'Issue #%s: %s\n\nComment: %s\n\nBuild Error:\n%s' \
-              "$ISSUE_NUM" "$ISSUE_BODY" "$COMMENT_BODY" "$BUILD_ERROR"
+          jq -n \
+            --arg event "build_failure" \
+            --arg repo "$REPO" \
+            --arg run_url "$RUN_URL" \
+            --arg sha "$SHA" \
+            --arg ref "$BRANCH_NAME" \
+            --arg error "$BUILD_ERROR" \
+            --arg message "$MESSAGE" \
+            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,error:$error,message:$message}' > /tmp/payload.json
 
-            jq -n \
-              --arg event "build_failure" \
-              --arg repo "$REPO" \
-              --arg run_url "$RUN_URL" \
-              --arg sha "$SHA" \
-              --arg ref "$BRANCH_NAME" \
-              --arg error "$BUILD_ERROR" \
-              --arg message "$MESSAGE" \
-              '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,error:$error,message:$message}' > /tmp/payload.json
+          SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
 
-            SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
+          RETRY_COUNT=0
+          SUCCESS=false
 
-            RETRY_COUNT=0
-            SUCCESS=false
+          while [ "$SUCCESS" = "false" ]; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
 
-            while [ "$SUCCESS" = "false" ]; do
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "Sending webhook to OpenCode (attempt $RETRY_COUNT)..."
+            if curl -fsSL -X POST \
+              -H "Content-Type: application/json" \
+              -H "X-GitHub-Event: build_failure" \
+              -H "X-Hub-Signature-256: $SIG" \
+              --data-binary @/tmp/payload.json \
+              "$WEBHOOK_URL"; then
+              SUCCESS=true
+              echo "Webhook sent successfully, OpenCode will push fixes to $BRANCH_NAME"
+            else
+              echo "Webhook attempt $RETRY_COUNT failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
 
-              if curl -fsSL -X POST \
-                -H "Content-Type: application/json" \
-                -H "X-GitHub-Event: build_failure" \
-                -H "X-Hub-Signature-256: $SIG" \
-                --data-binary @/tmp/payload.json \
-                "$WEBHOOK_URL"; then
-                SUCCESS=true
-                echo "Webhook sent successfully, OpenCode will push fixes to $BRANCH_NAME"
-              else
-                echo "Webhook attempt $RETRY_COUNT failed, retrying in 5 seconds..."
-                sleep 5
-              fi
-            done
-
-            echo "NO_CHANGES=true" >> $GITHUB_OUTPUT
-            echo "OpenCode notified. Waiting for fixes to be pushed to $BRANCH_NAME..."
-          else
-            echo "Build passes! No fix needed."
-            rm -f .build_error.txt
-            echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
-            echo "NO_CHANGES=true" >> $GITHUB_OUTPUT
-          fi
+          echo "OpenCode notified. Waiting for fixes to be pushed to $BRANCH_NAME..."
 
   create-pr:
     needs: resolve-issue
