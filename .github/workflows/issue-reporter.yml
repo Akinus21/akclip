@@ -29,12 +29,10 @@ jobs:
           ISSUE_NUM: ${{ github.event.issue.number }}
         run: |
           set -e
-          echo "Collecting issue context for #$ISSUE_NUM..."
           ISSUE_TITLE="${{ github.event.issue.title }}"
           ISSUE_BODY="${{ github.event.issue.body }}"
           echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_OUTPUT
           echo "ISSUE_NUM=${ISSUE_NUM}" >> $GITHUB_OUTPUT
-          echo "Fetching all comments for issue #$ISSUE_NUM..."
           gh issue comment list $ISSUE_NUM --json body --jq '.[].body' > .comments.txt 2>/dev/null || echo "No comments" > .comments.txt
           ISSUE_BODY_ESCAPED=$(echo "$ISSUE_BODY" | jq -Rs .)
           echo "ISSUE_BODY_ESCAPED=${ISSUE_BODY_ESCAPED}" >> $GITHUB_OUTPUT
@@ -53,20 +51,8 @@ jobs:
           ISSUE_TITLE="${{ steps.issue_context.outputs.ISSUE_TITLE }}"
           ISSUE_BODY="${{ steps.issue_context.outputs.ISSUE_BODY_ESCAPED }}"
           COMMENTS="$(cat .comments.txt)"
-          INSTRUCTIONS="INSTRUCTIONS FOR FIXING THIS ISSUE: 1. Create a new branch locally named issue-${ISSUE_NUM} from origin/main. 2. Apply the necessary fixes to resolve the reported issue. 3. Push the branch to origin/issue-${ISSUE_NUM}. 4. CI will automatically build the branch and either succeed or send you another webhook with build errors. 5. If build fails, fix the errors and push again to the same branch to continue the iteration loop."
-          MESSAGE="USER_ISSUE_REPORT - Issue #${ISSUE_NUM}
-
-=== ISSUE TITLE ===
-${ISSUE_TITLE}
-
-=== ISSUE BODY ===
-${ISSUE_BODY}
-
-=== COMMENTS ===
-${COMMENTS}
-
-=== ${INSTRUCTIONS}"
-          echo "$MESSAGE" > /tmp/message.txt
+          INSTRUCTIONS="INSTRUCTIONS FOR FIXING THIS ISSUE: 1. Create a new branch locally named issue-${ISSUE_NUM} from origin/main. 2. Apply the necessary fixes. 3. Push the branch to origin/issue-${ISSUE_NUM}. 4. CI will build and either succeed or send another webhook with errors. 5. If build fails, fix and push again to continue iteration."
+          MESSAGE="USER_ISSUE_REPORT - Issue #${ISSUE_NUM} | TITLE: ${ISSUE_TITLE} | BODY: ${ISSUE_BODY} | COMMENTS: ${COMMENTS} | ${INSTRUCTIONS}"
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \

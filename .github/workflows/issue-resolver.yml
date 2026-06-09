@@ -29,8 +29,6 @@ jobs:
           set -e
           BRANCH_NAME=$(git branch --show-current)
           ISSUE_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+' || echo "0")
-          echo "BRANCH_NAME=$BRANCH_NAME"
-          echo "ISSUE_NUM=$ISSUE_NUM"
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "ISSUE_NUM=$ISSUE_NUM" >> $GITHUB_OUTPUT
 
@@ -53,15 +51,7 @@ jobs:
         run: |
           set -e
           BUILD_ERROR="$(cat build.log 2>/dev/null || echo 'Build failed')"
-          INSTRUCTIONS="INSTRUCTIONS: 1. Review the build error above. 2. Fix the code in your local branch. 3. Push the fix to origin/${BRANCH_NAME}. 4. CI will rebuild and either succeed or send another failure webhook."
-          MESSAGE="BUILD_FAILURE: Issue #${ISSUE_NUM}
-
-The build for branch ${BRANCH_NAME} has failed. Please fix the errors below and push to the same branch to continue the iteration loop.
-
-=== BUILD ERROR ===
-${BUILD_ERROR}
-
-=== ${INSTRUCTIONS}"
+          MESSAGE="BUILD_FAILURE: Issue #${ISSUE_NUM} | BRANCH: ${BRANCH_NAME} | ERROR: ${BUILD_ERROR} | INSTRUCTIONS: Fix the build error, push to origin/${BRANCH_NAME}, CI will rebuild."
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
