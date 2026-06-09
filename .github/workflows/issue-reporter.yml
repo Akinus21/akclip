@@ -4,7 +4,7 @@ on:
   issues:
     types: [opened]
   issue_comment:
-    types: [created, edited]
+    types: [created]
 
 permissions:
   contents: write
@@ -13,8 +13,16 @@ permissions:
 
 jobs:
   report-issue:
-    if: "contains(github.event.issue.body, '/fix') || contains(github.event.comment.body, '/fix')"
+    if: "contains(github.event.issue.body, '/fix') || (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/fix'))"
     runs-on: ubuntu-latest
+    steps:
+      - name: Skip if bot comment
+        if: github.event_name == 'issue_comment'
+        run: |
+          if [ "${{ github.event.comment.user.login }}" == "github-actions[bot]" ]; then
+            echo "Skipping bot comment"
+            exit 78
+          fi
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -32,7 +40,10 @@ jobs:
         run: |
           echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_OUTPUT
           echo "ISSUE_NUM=${ISSUE_NUM}" >> $GITHUB_OUTPUT
+          echo "ISSUE_BODY=${ISSUE_BODY}" >> $GITHUB_OUTPUT
           gh issue comment list $ISSUE_NUM --json body --jq '.[].body' > .comments.txt 2>/dev/null || echo "No comments" > .comments.txt
+          COMMENTS=$(cat .comments.txt)
+          echo "COMMENTS=${COMMENTS}" >> $GITHUB_OUTPUT
 
       - name: Send to OpenCode
         id: send_webhook
@@ -44,11 +55,11 @@ jobs:
           WEBHOOK_URL: https://webhook.akinus21.com/webhook/akclip-build
           ISSUE_NUM: ${{ steps.issue_context.outputs.ISSUE_NUM }}
           ISSUE_TITLE: ${{ steps.issue_context.outputs.ISSUE_TITLE }}
+          ISSUE_BODY: ${{ steps.issue_context.outputs.ISSUE_BODY }}
+          COMMENTS: ${{ steps.issue_context.outputs.COMMENTS }}
         run: |
-          COMMENTS="$(cat .comments.txt)"
           INSTRUCTIONS="INSTRUCTIONS: Create branch issue-${ISSUE_NUM} from origin/main, apply fix, push to origin/issue-${ISSUE_NUM}. CI will build. If build fails, fix error and push again."
-          MESSAGE="USER_ISSUE_REPORT Issue ${ISSUE_NUM} Title ${ISSUE_TITLE} Comments ${COMMENTS} ${INSTRUCTIONS}"
-          echo "$MESSAGE" > /tmp/message.txt
+          MESSAGE="USER_ISSUE_REPORT Issue ${ISSUE_NUM} Title ${ISSUE_TITLE} Body ${ISSUE_BODY} Comments ${COMMENTS} ${INSTRUCTIONS}"
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
@@ -57,8 +68,11 @@ jobs:
             --arg ref "issue-${ISSUE_NUM}" \
             --arg branch "issue-${ISSUE_NUM}" \
             --arg issue_num "$ISSUE_NUM" \
+            --arg issue_title "$ISSUE_TITLE" \
+            --arg issue_body "$ISSUE_BODY" \
+            --arg comments "$COMMENTS" \
             --arg message "$MESSAGE" \
-            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,message:$message}' > /tmp/payload.json
+            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,issue_title:$issue_title,issue_body:$issue_body,comments:$comments,message:$message}' > /tmp/payload.json
           SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
           curl -fsSL -X POST \
             -H "Content-Type: application/json" \
