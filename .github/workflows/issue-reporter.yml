@@ -32,18 +32,10 @@ jobs:
 
       - name: Collect Issue Context
         id: issue_context
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          ISSUE_NUM: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_OUTPUT
+          ISSUE_NUM="${{ github.event.issue.number }}"
           echo "ISSUE_NUM=${ISSUE_NUM}" >> $GITHUB_OUTPUT
-          echo "ISSUE_BODY=${ISSUE_BODY}" >> $GITHUB_OUTPUT
           gh issue comment list $ISSUE_NUM --json body --jq '.[].body' > .comments.txt 2>/dev/null || echo "No comments" > .comments.txt
-          COMMENTS=$(cat .comments.txt)
-          echo "COMMENTS=${COMMENTS}" >> $GITHUB_OUTPUT
 
       - name: Send to OpenCode
         id: send_webhook
@@ -53,11 +45,11 @@ jobs:
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WEBHOOK_URL: https://webhook.akinus21.com/webhook/akclip-build
-          ISSUE_NUM: ${{ steps.issue_context.outputs.ISSUE_NUM }}
-          ISSUE_TITLE: ${{ steps.issue_context.outputs.ISSUE_TITLE }}
-          ISSUE_BODY: ${{ steps.issue_context.outputs.ISSUE_BODY }}
-          COMMENTS: ${{ steps.issue_context.outputs.COMMENTS }}
         run: |
+          ISSUE_NUM="${{ github.event.issue.number }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_BODY="${{ github.event.issue.body }}"
+          COMMENTS="$(cat .comments.txt)"
           INSTRUCTIONS="INSTRUCTIONS: Create branch issue-${ISSUE_NUM} from origin/main, apply fix, push to origin/issue-${ISSUE_NUM}. CI will build. If build fails, fix error and push again."
           MESSAGE="USER_ISSUE_REPORT Issue ${ISSUE_NUM} Title ${ISSUE_TITLE} Body ${ISSUE_BODY} Comments ${COMMENTS} ${INSTRUCTIONS}"
           jq -n \
@@ -85,6 +77,6 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          ISSUE_NUM: ${{ steps.issue_context.outputs.ISSUE_NUM }}
         run: |
+          ISSUE_NUM="${{ github.event.issue.number }}"
           gh issue comment $ISSUE_NUM --body "Agent notified of /fix request. Work will begin shortly."
