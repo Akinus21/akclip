@@ -52,7 +52,7 @@ jobs:
           ISSUE_BODY="${{ steps.issue_context.outputs.ISSUE_BODY_ESCAPED }}"
           COMMENTS="$(cat .comments.txt)"
           INSTRUCTIONS="INSTRUCTIONS FOR FIXING THIS ISSUE: 1. Create a new branch locally named issue-${ISSUE_NUM} from origin/main. 2. Apply the necessary fixes. 3. Push the branch to origin/issue-${ISSUE_NUM}. 4. CI will build and either succeed or send another webhook with errors. 5. If build fails, fix and push again to continue iteration."
-          MESSAGE="USER_ISSUE_REPORT - Issue #${ISSUE_NUM} | TITLE: ${ISSUE_TITLE} | BODY: ${ISSUE_BODY} | COMMENTS: ${COMMENTS} | ${INSTRUCTIONS}"
+          MESSAGE="USER_ISSUE_REPORT - Issue ${ISSUE_NUM} | TITLE: ${ISSUE_TITLE} | BODY: ${ISSUE_BODY} | COMMENTS: ${COMMENTS} | ${INSTRUCTIONS}"
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
