@@ -142,16 +142,8 @@ jobs:
 
           WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
 
-          echo "$BUILD_ERROR" > /tmp/error.log
-
-          python3 -c "$(echo 'aW1wb3J0IG9zLCBzdWJwcm9jZXNzLCBqc29uLCBzeXMKTE9HX0ZJTEUgPSAiL3RtcC9lcnJvci5sb2ciCmlmIG5vdCBvcy5wYXRoLmV4aXN0cyhMT0dfRklMRSkgb3Igb3MucGF0aC5nZXRzaXplKExPR19GSUxFKSA9PSAwOgogICAgcHJpbnQoJ3Bhc3R5X2lkcz1uby1sb2dzJykKICAgIHByaW50KCdwYXN0eV91cmw9aHR0cHM6Ly9wYXN0ZS5ha2ludXMyMS5jb20vbm8tbG9ncycpCiAgICBzeXMuZXhpdCgwKQp3aXRoIG9wZW4oTE9HX0ZJTEUsICdyJykgYXMgZjoKICAgIGxpbmVzID0gZi5yZWFkbGluZXMoKQp0b3RhbF9saW5lcyA9IGxlbihsaW5lcykKcHJpbnQoZidMb2cgaGFzIHt0b3RhbF9saW5lc30gbGluZXMnKQppZiB0b3RhbF9saW5lcyA9PSAwOgogICAgcHJpbnQoJ3Bhc3R5X2lkcz1uby1jb250ZW50JykKICAgIHByaW50KCdwYXN0eV91cmw9aHR0cHM6Ly9wYXN0ZS5ha2ludXMyMS5jb20vbm8tbG9ncycpCiAgICBzeXMuZXhpdCgwKQpwYXN0eV9pZHMgPSBbXQpjaHVua19zaXplID0gMjAwMApmb3Igc3RhcnQgaW4gcmFuZ2UoMCwgdG90YWxfbGluZXMsIGNodW5rX3NpemUpOgogICAgZW5kID0gbWluKHN0YXJ0ICsgY2h1bmtfc2l6ZSwgdG90YWxfbGluZXMpCiAgICBjaHVuayA9ICcnLmpvaW4obGluZXNbc3RhcnQ6ZW5kXSkKICAgIHBheWxvYWQgPSBqc29uLmR1bXBzKHsnY29udGVudCc6IGNodW5rfSkKICAgIHBhc3RlX2lkID0gTm9uZQogICAgZm9yIGkgaW4gcmFuZ2UoMzApOgogICAgICAgIHRyeToKICAgICAgICAgICAgcmVzdWx0ID0gc3VicHJvY2Vzcy5ydW4oCiAgICAgICAgICAgICAgICBbJ2N1cmwnLCAnLXNTJywgJy1YJywgJ1BPU1QnLCAnLUgnLCAnQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uJywgJy1kJywgcGF5bG9hZCwKICAgICAgICAgICAgICAgICAnaHR0cHM6Ly9wYXN0ZS5ha2ludXMyMS5jb20vYXBpL3YyL3Bhc3RzJ10sCiAgICAgICAgICAgICAgICBjYXB0dXJlX291dHB1dD1UcnVlLCB0ZXh0PVRydWUsIHRpbWVvdXQ9MTApCiAgICAgICAgICAgIHJlc3AgPSBqc29uLmxvYWRzKHJlc3VsdC5zdGRvdXQpCiAgICAgICAgICAgIHBhc3RlX2lkID0gcmVzcC5nZXQoJ2lkJywgJycpCiAgICAgICAgICAgIGlmIHBhc3RlX2lkOgogICAgICAgICAgICAgICAgcHJpbnQoZidVcGxvYWRlZCB7c3RhcnQrMX0te2VuZH0gLT4ge3Bhc3RlX2lkfScpCiAgICAgICAgICAgICAgICBicmVhawogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICAgICAgcHJpbnQoZidBdHRlbXB0IHtJK2YgfGFpbGVkOiB7ZX0nKQogICAgICAgIGltcG9ydCB0aW1lOyB0aW1lLnNsZWVwKDMpCiAgICBpZiBwYXN0ZV9pZDoKICAgICAgICBwYXN0eV9pZHMuYXBwZW5kKHBhc3RlX2lkKQppZiBwYXN0eV9pZHM6CiAgICBwcmludChmJ3Bhc3R5X2lkcz17Y2hyKDQ0KS5qb2luKHBhc3R5X2lkcyl9JykKICAgIHByaW50KGYncGFzdHlfdXJsPWh0dHBzOi8vcGFzdGUuYWtpbnVzMjEuY29tL3twYXN0eV9pZHNbMF19JykKZWxzZToKICAgIHByaW50KCdwYXN0eV9pZHM9ZmFpbGVkJykKICAgIHByaW50KCdwYXN0eV91cmw9aHR0cHM6Ly9wYXN0ZS5ha2ludXMyMS5jb20vZXJyb3InKQo=' | base64 -d)"
-
-          PASTY_IDS=$(python3 -c "$(echo 'aW1wb3J0IG9zLCBzdWJwcm9jZXNzLCBqc29uLCBzeXMKTE9HX0ZJTEUgPSAiL3RtcC9lcnJvci5sb2ciCmlmIG5vdCBvcy5wYXRoLmV4aXN0cyhMT0dfRklMRSkgb3Igb3MucGF0aC5nZXRzaXplKExPR19GSUxFKSA9PSAwOgogICAgcHJpbnQoJ3Bhc3R5X2lkcz1uby1sb2dzJykKICAgIHByaW50KCdwYXN0eV91cmw9aHR0cHM6Ly9wYXN0ZS5ha2ludXMyMS5jb20vbm8tbG9ncycpCiAgICBzeXMuZXhpdCgwKQp3aXRoIG9wZW4oTE9HX0ZJTEUsICdyJykgYXMgZjoKICAgIGxpbmVzID0gZi5yZWFkbGluZXMoKQp0b3RhbF9saW5lcyA9IGxlbihsaW5lcykKcHJpbnQoZidMb2cgaGFzIHt0b3RhbF9saW5lc30gbGluZXMnKQppZiB0b3RhbF9saW5lcyA9PSAwOgogICAgcHJpbnQoJ3Bhc3R5X2lkcz1uby1jb250ZW50JykKICAgIHByaW50KCdwYXN0eV91cmw9aHR0cHM6Ly9wYXN0ZS5ha2ludXMyMS5jb20vbm8tbG9ncycpCiAgICBzeXMuZXhpdCgwKQpwYXN0eV9pZHMgPSBbXQpjaHVua19zaXplID0gMjAwMApmb3Igc3RhcnQgaW4gcmFuZ2UoMCwgdG90YWxfbGluZXMsIGNodW5rX3NpemUpOgogICAgZW5kID0gbWluKHN0YXJ0ICsgY2h1bmtfc2l6ZSwgdG90YWxfbGluZXMpCiAgICBjaHVuayA9ICcnLmpvaW4obGluZXNbc3RhcnQ6ZW5kXSkKICAgIHBheWxvYWQgPSBqc29uLmR1bXBzKHsnY29udGVudCc6IGNodW5rfSkKICAgIHBhc3RlX2lkID0gTm9uZQogICAgZm9yIGkgaW4gcmFuZ2UoMzApOgogICAgICAgIHRyeToKICAgICAgICAgICAgcmVzdWx0ID0gc3VicHJvY2Vzcy5ydW4oCiAgICAgICAgICAgICAgICBbJ2N1cmwnLCAnLXNTJywgJy1YJywgJ1BPU1QnLCAnLUgnLCAnQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uJywgJy1kJywgcGF5bG9hZCwKICAgICAgICAgICAgICAgICAnaHR0cHM6Ly9wYXN0ZS5ha2ludXMyMS5jb20vYXBpL3YyL3Bhc3RzJ10sCiAgICAgICAgICAgICAgICBjYXB0dXJlX291dHB1dD1UcnVlLCB0ZXh0PVRydWUsIHRpbWVvdXQ9MTApCiAgICAgICAgICAgIHJlc3AgPSBqc29uLmxvYWRzKHJlc3VsdC5zdGRvdXQpCiAgICAgICAgICAgIHBhc3RlX2lkID0gcmVzcC5nZXQoJ2lkJywgJycpCiAgICAgICAgICAgIGlmIHBhc3RlX2lkOgogICAgICAgICAgICAgICAgcHJpbnQoZidVcGxvYWRlZCB7c3RhcnQrMX0te2VuZH0gLT4ge3Bhc3RlX2lkfScpCiAgICAgICAgICAgICAgICBicmVhawogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICAgICAgcHJpbnQoZidBdHRlbXB0IHtJK2YgfGFpbGVkOiB7ZX0nKQogICAgICAgIGltcG9ydCB0aW1lOyB0aW1lLnNsZWVwKDMpCiAgICBpZiBwYXN0ZV9pZDoKICAgICAgICBwYXN0eV9pZHMuYXBwZW5kKHBhc3RlX2lkKQppZiBwYXN0eV9pZHM6CiAgICBwcmludChmJ3Bhc3R5X2lkcz17Y2hyKDQ0KS5qb2luKHBhc3R5X2lkcyl9JykKICAgIHByaW50KGYncGFzdHlfdXJsPWh0dHBzOi8vcGFzdGUuYWtpbnVzMjEuY29tL3twYXN0eV9pZHNbMF19JykKZWxzZToKICAgIHByaW50KCdwYXN0eV9pZHM9ZmFpbGVkJykKICAgIHByaW50KCdwYXN0eV91cmw9aHR0cHM6Ly9wYXN0ZS5ha2ludXMyMS5jb20vZXJyb3InKQo=' | base64 -d)" 2>/dev/null || echo "pasty_url=https://pasty.akinus21.com/error"
-
-          PASTY_URL=$(echo "$PASTY_IDS" | grep pasty_url | cut -d= -f2)
-
-          printf -v MESSAGE 'REPO: %s\nBRANCH TO PUSH FIXES: %s\nISSUE #: %s\n\n=== ISSUE BODY ===\n%s\n\n=== COMMENT ===\n%s\n\n=== BUILD ERROR ===\n%s\n\nFull error logs: %s' \
-            "$REPO" "$BRANCH_NAME" "$ISSUE_NUM" "$ISSUE_BODY" "$COMMENT_BODY" "$BUILD_ERROR" "$PASTY_URL"
+          printf -v MESSAGE 'REPO: %s\nBRANCH TO PUSH FIXES: %s\nISSUE #: %s\n\n=== ISSUE BODY ===\n%s\n\n=== COMMENT ===\n%s\n\n=== BUILD ERROR ===\n%s' \
+            "$REPO" "$BRANCH_NAME" "$ISSUE_NUM" "$ISSUE_BODY" "$COMMENT_BODY" "$BUILD_ERROR"
 
           jq -n \
             --arg event "build_failure" \
@@ -162,9 +154,8 @@ jobs:
             --arg branch "$BRANCH_NAME" \
             --arg issue_num "$ISSUE_NUM" \
             --arg error "$BUILD_ERROR" \
-            --arg pasty_url "$PASTY_URL" \
             --arg message "$MESSAGE" \
-            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,error:$error,pasty_url:$pasty_url,message:$message}' > /tmp/payload.json
+            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,error:$error,message:$message}' > /tmp/payload.json
 
           SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
 
