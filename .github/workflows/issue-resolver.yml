@@ -58,18 +58,7 @@ jobs:
         run: |
           BUILD_ERROR=$(cat build.log 2>/dev/null || echo "Build failed")
 
-          printf -v MESSAGE 'BUILD_FAILURE: Issue #%s
-
-The build for branch %s has failed. Please fix the errors below and push to the same branch to continue the iteration loop.
-
-=== BUILD ERROR ===
-%s
-
-=== INSTRUCTIONS ===
-1. Review the build error above
-2. Fix the code in your local branch
-3. Push the fix to origin/%s
-4. CI will rebuild and either succeed or send another failure webhook' \
+          printf -v MESSAGE 'BUILD_FAILURE: Issue #%s\n\nThe build for branch %s has failed. Please fix the errors below and push to the same branch to continue the iteration loop.\n\n=== BUILD ERROR ===\n%s\n\n=== INSTRUCTIONS ===\n1. Review the build error above\n2. Fix the code in your local branch\n3. Push the fix to origin/%s\n4. CI will rebuild and either succeed or send another failure webhook' \
             "$ISSUE_NUM" "$BRANCH_NAME" "$BUILD_ERROR" "$BRANCH_NAME"
 
           jq -n \

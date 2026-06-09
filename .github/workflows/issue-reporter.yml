@@ -55,25 +55,14 @@ jobs:
           ISSUE_BODY="${{ steps.issue_context.outputs.ISSUE_BODY_ESCAPED }}"
           COMMENTS=$(cat .comments.txt)
 
-          INSTRUCTIONS="INSTRUCTIONS FOR FIXING THIS ISSUE:
-1. Create a new branch locally named 'issue-${ISSUE_NUM}' from 'origin/main'
-2. Apply the necessary fixes to resolve the reported issue
-3. Push the branch to 'origin/issue-${ISSUE_NUM}'
-4. CI will automatically build the branch and either succeed or send you another webhook with build errors
+          INSTRUCTIONS="INSTRUCTIONS FOR FIXING THIS ISSUE: \
+1. Create a new branch locally named 'issue-${ISSUE_NUM}' from 'origin/main' \
+2. Apply the necessary fixes to resolve the reported issue \
+3. Push the branch to 'origin/issue-${ISSUE_NUM}' \
+4. CI will automatically build the branch and either succeed or send you another webhook with build errors \
 5. If build fails, fix the errors and push again to the same branch to continue the iteration loop"
 
-          printf -v MESSAGE 'USER_ISSUE_REPORT - Issue #%s
-
-=== ISSUE TITLE ===
-%s
-
-=== ISSUE BODY ===
-%s
-
-=== COMMENTS ===
-%s
-
-=== %s' \
+          printf -v MESSAGE 'USER_ISSUE_REPORT - Issue #%s\n\n=== ISSUE TITLE ===\n%s\n\n=== ISSUE BODY ===\n%s\n\n=== COMMENTS ===\n%s\n\n=== %s' \
             "$ISSUE_NUM" "$ISSUE_TITLE" "$ISSUE_BODY" "$COMMENTS" "$INSTRUCTIONS"
 
           jq -n \
