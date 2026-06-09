@@ -50,9 +50,8 @@ jobs:
           ISSUE_TITLE="${{ github.event.issue.title }}"
           ISSUE_BODY="${{ github.event.issue.body }}"
           COMMENTS="$(cat .comments.txt)"
-          ERROR_MSG=$(echo "$ISSUE_BODY" | grep -E "Error:|ENOENT|Errno" | head -3 | tr '\n' ' ' || echo "See issue body")
           INSTRUCTIONS="INSTRUCTIONS: Create branch issue-${ISSUE_NUM} from origin/main, apply fix, push to origin/issue-${ISSUE_NUM}. CI will build. If build fails, fix error and push again."
-          MESSAGE="USER_ISSUE_REPORT Issue ${ISSUE_NUM} Title ${ISSUE_TITLE} Error: ${ERROR_MSG} ${INSTRUCTIONS}"
+          MESSAGE="USER_ISSUE_REPORT Issue ${ISSUE_NUM} Title ${ISSUE_TITLE} Body ${ISSUE_BODY} Comments ${COMMENTS} ${INSTRUCTIONS}"
           jq -n \
             --arg event "build_failure" \
             --arg repo "$REPO" \
