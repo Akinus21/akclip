@@ -89,21 +89,11 @@ jobs:
           if [ "$CURRENT_BRANCH" = "$BRANCH_NAME" ]; then
             echo "Already on branch $BRANCH_NAME, pulling latest..."
             git pull origin $BRANCH_NAME --rebase || true
-            echo "Updating workflow files from devops..."
-            git checkout origin/devops -- .github/workflows/
-            git add .github/workflows/
-            git commit -m "chore: update workflow files from devops" || true
-            git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
           elif git ls-remote --heads origin $BRANCH_NAME 2>/dev/null | grep -q "$BRANCH_NAME"; then
             echo "Branch exists, checking out..."
             git fetch origin $BRANCH_NAME
             git checkout $BRANCH_NAME
             git pull origin $BRANCH_NAME --rebase || true
-            echo "Updating workflow files from devops..."
-            git checkout origin/devops -- .github/workflows/
-            git add .github/workflows/
-            git commit -m "chore: update workflow files from devops" || true
-            git push origin $BRANCH_NAME || echo "Push failed, will retry on next run"
           else
             echo "Creating new branch: $BRANCH_NAME from devops"
             git checkout -b $BRANCH_NAME origin/devops
@@ -146,14 +136,14 @@ jobs:
           SHA="${{ github.sha }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          ISSUE_BODY=$(cat .issue_body_tmp 2>/dev/null | base64 -d || echo "")
-          COMMENT_BODY=$(cat .comment_body_tmp 2>/dev/null | base64 -d || echo "")
-          BUILD_ERROR=$(cat .build_error.txt 2>/dev/null || echo "")
+          ISSUE_BODY=$(cat .issue_body_tmp 2>/dev/null | base64 -d || echo "No issue body")
+          COMMENT_BODY=$(cat .comment_body_tmp 2>/dev/null | base64 -d || echo "No comment")
+          BUILD_ERROR=$(cat .build_error.txt 2>/dev/null || echo "$CARGO_OUTPUT")
 
           WEBHOOK_URL="https://webhook.akinus21.com/webhook/akclip-build"
 
-          printf -v MESSAGE 'Issue #%s: %s\n\nComment: %s\n\nBuild Error:\n%s' \
-            "$ISSUE_NUM" "$ISSUE_BODY" "$COMMENT_BODY" "$BUILD_ERROR"
+          printf -v MESSAGE 'REPO: %s\nBRANCH TO PUSH FIXES: %s\nISSUE #: %s\n\n=== ISSUE BODY ===\n%s\n\n=== COMMENT ===\n%s\n\n=== BUILD ERROR ===\n%s' \
+            "$REPO" "$BRANCH_NAME" "$ISSUE_NUM" "$ISSUE_BODY" "$COMMENT_BODY" "$BUILD_ERROR"
 
           jq -n \
             --arg event "build_failure" \
@@ -161,9 +151,11 @@ jobs:
             --arg run_url "$RUN_URL" \
             --arg sha "$SHA" \
             --arg ref "$BRANCH_NAME" \
+            --arg branch "$BRANCH_NAME" \
+            --arg issue_num "$ISSUE_NUM" \
             --arg error "$BUILD_ERROR" \
             --arg message "$MESSAGE" \
-            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,error:$error,message:$message}' > /tmp/payload.json
+            '{event:$event,repo:$repo,run_url:$run_url,sha:$sha,ref:$ref,branch:$branch,issue_num:$issue_num,error:$error,message:$message}' > /tmp/payload.json
 
           SIG=$(openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_HMAC_SECRET }}" /tmp/payload.json | awk '{print "sha256="$2}')
 
